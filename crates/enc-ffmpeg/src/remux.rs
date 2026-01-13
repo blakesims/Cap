@@ -469,6 +469,21 @@ pub fn concatenate_m4s_segments_with_init(
         }
     }
 
+    let segment_dir = init_path.parent().unwrap_or(init_path);
+    let hls_manifest = segment_dir.join("master.m3u8");
+
+    if hls_manifest.exists() {
+        tracing::info!(
+            "Using HLS manifest for remux: {}",
+            hls_manifest.display()
+        );
+        return remux_from_hls(&hls_manifest, output);
+    }
+
+    tracing::info!(
+        "HLS manifest not found, falling back to byte concatenation"
+    );
+
     let combined_path = output.with_extension("combined_fmp4.mp4");
 
     {
@@ -494,6 +509,13 @@ pub fn concatenate_m4s_segments_with_init(
     }
 
     result
+}
+
+fn remux_from_hls(hls_path: &Path, output_path: &Path) -> Result<(), RemuxError> {
+    let mut ictx = avformat::input(hls_path)?;
+    let mut octx = avformat::output(output_path)?;
+
+    remux_streams(&mut ictx, &mut octx)
 }
 
 fn remux_to_regular_mp4(input_path: &Path, output_path: &Path) -> Result<(), RemuxError> {

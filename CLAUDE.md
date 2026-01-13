@@ -487,3 +487,41 @@ Always format code before completing work:
 - **Rust**: Run `cargo fmt` to format all Rust code with rustfmt
 
 These commands should be run regularly during development and always at the end of a coding session to ensure consistent formatting across the codebase.
+
+## Desktop Recording Architecture
+
+### Recording Format (v0.4.3+)
+Recordings use HLS/DASH fragmented segments for crash resilience:
+```
+recording.cap/
+└── content/segments/segment-0/
+    ├── display/
+    │   ├── init.mp4              # Initialization segment (required)
+    │   ├── segment_001.m4s       # Media segments (3-sec chunks)
+    │   ├── master.m3u8           # HLS manifest
+    │   └── manifest.json         # Custom manifest
+    ├── camera/                   # Same structure as display
+    ├── audio-input.m4a
+    └── cursor.json
+```
+
+### Key Recording Code Paths
+- `crates/recording/src/output_pipeline/` — Recording pipeline, muxers
+- `crates/recording/src/recovery.rs` — Crash recovery and remuxing
+- `crates/enc-ffmpeg/src/remux.rs` — FFmpeg remux operations
+- `crates/enc-ffmpeg/src/mux/segmented_stream.rs` — Segmented video encoder
+- `apps/desktop/src-tauri/src/recording.rs` — Desktop recording commands
+
+### Debugging Recording Issues
+Key log messages to search for:
+- `"Recording has fragments that need remuxing"` — Fragmented recording detected
+- `"Muxer streams had failure"` — Error during recording pipeline
+- `"Failed to remux"` — Remux operation failed
+
+Recovery uses HLS manifest (`master.m3u8`) when available, falling back to byte concatenation of init.mp4 + segment_*.m4s files.
+
+### Manual Video Recovery
+If recordings fail to load, recover with ffmpeg CLI:
+```bash
+ffmpeg -i "recording.cap/content/segments/segment-0/display/master.m3u8" -c copy output.mp4
+```
