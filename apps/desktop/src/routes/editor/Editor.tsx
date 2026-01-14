@@ -280,7 +280,7 @@ function Inner() {
 	});
 
 	const emitRenderFrame = (time: number) => {
-		if (!editorState.playing) {
+		if (!editorState.playing || editorState.playbackSpeed > 1) {
 			events.renderFrameEvent.emit({
 				frame_number: Math.max(Math.floor(time * FPS), 0),
 				fps: FPS,
@@ -308,7 +308,7 @@ function Inner() {
 		on(
 			() => [frameNumberToRender(), previewResolutionBase()],
 			([number]) => {
-				if (editorState.playing) return;
+				if (editorState.playing && editorState.playbackSpeed === 1) return;
 				renderFrame(number as number);
 			},
 			{ defer: false },
