@@ -216,3 +216,102 @@ Working prototype available at: `keyboard-prototype/`
 - Access via: `http://zen:5173/` (Tailscale)
 - Demonstrates all keyboard bindings and UI patterns
 - Copy patterns directly where applicable
+
+## 9. Implementation Workflow
+
+Use the following subagent workflow for each story:
+
+1. **Create Plan** (subagent: general-purpose)
+   - Read relevant source files
+   - Create detailed plan in `stories/SXX-name.md`
+   - Include code snippets, test scenarios, checklist
+
+2. **Review Plan** (subagent: general-purpose)
+   - Verify plan accuracy against actual codebase
+   - Check for conflicts with existing code
+   - Identify missing edge cases
+   - Fix any issues before proceeding
+
+3. **Execute Plan** (subagent: general-purpose)
+   - Implement changes following the plan
+   - Update task tracking docs (main.md, global-task-manager.md)
+
+4. **Review Execution** (subagent: general-purpose)
+   - Verify all checklist items implemented
+   - Check for missing pieces
+   - Confirm no code comments added
+
+5. **User Testing**
+   - Commit and push for testing on Mac
+   - User tests on actual device
+   - Fix any bugs found, repeat until stable
+
+6. **Commit** - Only after user confirms working
+
+## 10. Learnings & Gotchas (S01-S04)
+
+### Critical Architecture Patterns
+
+**A. State Definition Order (S01)**
+- `editorActions` must be defined AFTER `editorState` in context.ts
+- Actions reference state via closures - state must exist first
+- Bug: Actions defined before state caused undefined reference errors
+
+**B. normalizeCombo() Behavior (S02/S03)**
+The keyboard normalizer uses `e.key.toUpperCase()` for single printable chars:
+| Key Pressed | `e.key` | `e.code` | Combo String |
+|-------------|---------|----------|--------------|
+| `h` | "h" | "KeyH" | `"H"` |
+| `Shift+h` | "H" | "KeyH" | `"Shift+H"` |
+| `0` | "0" | "Digit0" | `"0"` (NOT "Digit0") |
+| `$` (Shift+4) | "$" | "Digit4" | `"Shift+$"` (NOT "Shift+Digit4") |
+| `Space` | " " | "Space" | `"Space"` (special case) |
+
+**C. Unified Playback Control (S04)**
+ALL play/pause operations must use `editorActions.startFastPlayback()` / `stopFastPlayback()`:
+- `handlePlayPauseClick` (Space bar, play button)
+- `handlePreviewQualityChange`
+- End-of-timeline effect
+- Prev/Next buttons
+- Timeline click handler
+
+DO NOT call `commands.startPlayback()` or `commands.stopPlayback()` directly - this leaves intervals running when using fast playback.
+
+**D. Frame Rendering Guards (S04)**
+In Editor.tsx, frame rendering is guarded:
+```typescript
+if (editorState.playing && editorState.playbackSpeed === 1) return;
+```
+- At 1x: Rust handles rendering, skip frontend render
+- At 2x-8x: Frontend must render (interval-based playback)
+- Without this, fast playback shows frozen frame
+
+**E. Render Rate Limiting (S04)**
+At high speeds, use fixed render rate with variable time jump:
+- BAD: `intervalMs = (1/30) / speed * 1000` → 240 requests/sec at 8x
+- GOOD: `intervalMs = 1000/30` fixed, `timePerTick = (1/30) * speed`
+- Prevents decoder timeout floods
+
+**F. Debounce During Fast Playback (S04)**
+Skip trailing debounce during fast playback to prevent accumulated render requests:
+```typescript
+const renderFrame = (time: number) => {
+    throttledRenderFrame(time);
+    if (editorState.playbackSpeed === 1) {
+        trailingRenderFrame(time);
+    }
+};
+```
+
+### Testing Notes
+
+- Always test on actual Mac device, not just code review
+- Check console for errors AND backend logs (decoder warnings)
+- Test transitions: paused→playing, 1x→2x→1x, fast→pause→resume
+- Test edge cases: timeline start, timeline end, empty timeline
+
+### Future Enhancements (Not in S01-S06)
+
+- **Viewport follows cursor**: Navigation can move playhead outside visible area
+- **Key repeat for navigation**: Currently disabled, could enable for h/l frame stepping
+- **Reverse playback**: Not feasible with current video decoder architecture
