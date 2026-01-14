@@ -292,7 +292,9 @@ function Inner() {
 
 	const renderFrame = (time: number) => {
 		throttledRenderFrame(time);
-		trailingRenderFrame(time);
+		if (editorState.playbackSpeed === 1) {
+			trailingRenderFrame(time);
+		}
 	};
 
 	const frameNumberToRender = createMemo(() => {
