@@ -150,54 +150,48 @@ export function PlayerContent() {
 		if (quality === previewQuality()) return;
 
 		const wasPlaying = editorState.playing;
-		const currentFrame = Math.max(
-			Math.floor(editorState.playbackTime * FPS),
-			0,
-		);
+		const currentSpeed = editorState.playbackSpeed;
 
 		setPreviewQuality(quality);
 
 		if (!wasPlaying) return;
 
 		try {
-			await commands.stopPlayback();
-			setEditorState("playing", false);
-			await commands.seekTo(currentFrame);
-			await commands.startPlayback(FPS, previewResolutionBase());
-			setEditorState("playing", true);
+			await editorActions.stopFastPlayback();
+			if (currentSpeed === 1) {
+				await editorActions.startFastPlayback();
+			} else {
+				setEditorState("playbackSpeed", currentSpeed);
+				await editorActions.startFastPlayback();
+			}
 		} catch (error) {
 			console.error("Failed to update preview quality:", error);
-			setEditorState("playing", false);
+			await editorActions.stopFastPlayback();
 		}
 	};
 
 	createEffect(() => {
 		if (isAtEnd() && editorState.playing) {
-			commands.stopPlayback();
-			setEditorState("playing", false);
+			void editorActions.stopFastPlayback();
 		}
 	});
 
 	const handlePlayPauseClick = async () => {
 		try {
 			if (isAtEnd()) {
-				await commands.stopPlayback();
+				await editorActions.stopFastPlayback();
 				setEditorState("playbackTime", 0);
-				await commands.seekTo(0);
-				await commands.startPlayback(FPS, previewResolutionBase());
-				setEditorState("playing", true);
+				setEditorState("playbackSpeed", 1);
+				await editorActions.startFastPlayback();
 			} else if (editorState.playing) {
-				await commands.stopPlayback();
-				setEditorState("playing", false);
+				await editorActions.stopFastPlayback();
 			} else {
-				await commands.seekTo(Math.floor(editorState.playbackTime * FPS));
-				await commands.startPlayback(FPS, previewResolutionBase());
-				setEditorState("playing", true);
+				await editorActions.startFastPlayback();
 			}
 			if (editorState.playing) setEditorState("previewTime", null);
 		} catch (error) {
 			console.error("Error handling play/pause:", error);
-			setEditorState("playing", false);
+			await editorActions.stopFastPlayback();
 		}
 	};
 
@@ -444,9 +438,9 @@ export function PlayerContent() {
 						type="button"
 						class="transition-opacity hover:opacity-70 will-change-[opacity]"
 						onClick={async () => {
-							await commands.stopPlayback();
-							setEditorState("playing", false);
+							await editorActions.stopFastPlayback();
 							setEditorState("playbackTime", 0);
+							setEditorState("playbackSpeed", 1);
 						}}
 					>
 						<IconCapPrev class="text-gray-12 size-3" />
@@ -468,9 +462,9 @@ export function PlayerContent() {
 						type="button"
 						class="transition-opacity hover:opacity-70 will-change-[opacity]"
 						onClick={async () => {
-							await commands.stopPlayback();
-							setEditorState("playing", false);
+							await editorActions.stopFastPlayback();
 							setEditorState("playbackTime", totalDuration());
+							setEditorState("playbackSpeed", 1);
 						}}
 					>
 						<IconCapNext class="text-gray-12 size-3" />

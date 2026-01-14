@@ -88,6 +88,7 @@ export function Timeline() {
 		totalDuration,
 		editorState,
 		projectActions,
+		editorActions,
 		meta,
 		previewResolutionBase,
 	} = useEditorContext();
@@ -280,25 +281,20 @@ export function Timeline() {
 				secsPerPixel() * (e.clientX - left) + transform().position;
 			const newTime = Math.min(Math.max(0, rawTime), totalDuration());
 
-			// If playing, some backends require restart to seek reliably
 			if (editorState.playing) {
-				try {
-					await commands.stopPlayback();
-
-					// Round to nearest frame to prevent off-by-one drift
-					const targetFrame = Math.round(newTime * FPS);
-					await commands.seekTo(targetFrame);
-
-					// If the user paused during these async ops, bail out without restarting
-					if (!editorState.playing) {
-						setEditorState("playbackTime", newTime);
-						return;
+				if (editorState.playbackSpeed === 1) {
+					try {
+						await commands.stopPlayback();
+						const targetFrame = Math.round(newTime * FPS);
+						await commands.seekTo(targetFrame);
+						if (!editorState.playing) {
+							setEditorState("playbackTime", newTime);
+							return;
+						}
+						await commands.startPlayback(FPS, previewResolutionBase());
+					} catch (err) {
+						console.error("Failed to seek during playback:", err);
 					}
-
-					await commands.startPlayback(FPS, previewResolutionBase());
-					setEditorState("playing", true);
-				} catch (err) {
-					console.error("Failed to seek during playback:", err);
 				}
 			}
 
