@@ -864,10 +864,10 @@ export const [EditorContextProvider, useEditorContext] = createContextProvider(
 					setEditorState("playing", true);
 				} else {
 					setEditorState("playing", true);
-					const frameTime = 1 / 30;
-					const intervalMs = (frameTime / speed) * 1000;
+					const intervalMs = 1000 / 30;
+					const timePerTick = (1 / 30) * speed;
 					const intervalId = window.setInterval(() => {
-						const newTime = editorState.playbackTime + frameTime * speed;
+						const newTime = editorState.playbackTime + timePerTick;
 						const duration = totalDuration();
 						if (newTime >= duration) {
 							setEditorState("playbackTime", duration);
