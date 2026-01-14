@@ -31,6 +31,22 @@ import {
 import { useEditorShortcuts, isInputFocused } from "./useEditorShortcuts";
 import { formatTime } from "./utils";
 
+function SpeedIndicator(props: { speed: 1 | 2 | 4 | 8; playing: boolean }) {
+	return (
+		<Show when={props.playing && props.speed > 1}>
+			<div
+				class="absolute top-4 right-4 px-3 py-1.5 rounded-lg text-sm font-medium z-50"
+				style={{
+					"background-color": "rgba(0, 0, 0, 0.7)",
+					color: "white",
+				}}
+			>
+				{props.speed}x
+			</div>
+		</Show>
+	);
+}
+
 export function PlayerContent() {
 	const {
 		project,
@@ -325,6 +341,18 @@ export function PlayerContent() {
 				combo: "Shift+$",
 				handler: () => editorActions.jumpToEnd(),
 			},
+			{
+				combo: "Ctrl+L",
+				handler: () => editorActions.increaseSpeed(),
+			},
+			{
+				combo: "Ctrl+J",
+				handler: () => editorActions.decreaseSpeed(),
+			},
+			{
+				combo: "K",
+				handler: () => editorActions.pause(),
+			},
 		],
 	);
 
@@ -398,6 +426,7 @@ export function PlayerContent() {
 				</div>
 			</div>
 			<PreviewCanvas />
+			<SpeedIndicator speed={editorState.playbackSpeed} playing={editorState.playing} />
 			<div class="flex overflow-hidden z-10 flex-row gap-3 justify-between items-center p-5">
 				<div class="flex-1">
 					<Time

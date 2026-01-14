@@ -512,7 +512,10 @@ export const [EditorContextProvider, useEditorContext] = createContextProvider(
 				clearTimeout(projectSaveTimeout);
 				projectSaveTimeout = undefined;
 			}
-			void flushProjectConfig();
+		if (editorState.playbackInterval !== null) {
+			clearInterval(editorState.playbackInterval);
+		}
+		void flushProjectConfig();
 		});
 
 		createEffect(
@@ -638,6 +641,8 @@ export const [EditorContextProvider, useEditorContext] = createContextProvider(
 			previewTime: null as number | null,
 			playbackTime: 0,
 			playing: false,
+			playbackSpeed: 1 as 1 | 2 | 4 | 8,
+			playbackInterval: null as number | null,
 			inPoint: null as number | null,
 			outPoint: null as number | null,
 			mark: null as number | null,
@@ -813,6 +818,79 @@ export const [EditorContextProvider, useEditorContext] = createContextProvider(
 					setEditorState("playbackTime", prev);
 					setEditorState("previewTime", null);
 				}
+			},
+
+			increaseSpeed: async () => {
+				const speeds: Array<1 | 2 | 4 | 8> = [1, 2, 4, 8];
+				const currentIndex = speeds.indexOf(editorState.playbackSpeed);
+				const nextSpeed = speeds[Math.min(currentIndex + 1, speeds.length - 1)];
+				if (nextSpeed === editorState.playbackSpeed) return;
+				const wasPlaying = editorState.playing;
+				if (wasPlaying) {
+					await editorActions.stopFastPlayback();
+				}
+				setEditorState("playbackSpeed", nextSpeed);
+				if (wasPlaying || nextSpeed > 1) {
+					await editorActions.startFastPlayback();
+				}
+			},
+
+			decreaseSpeed: async () => {
+				const speeds: Array<1 | 2 | 4 | 8> = [1, 2, 4, 8];
+				const currentIndex = speeds.indexOf(editorState.playbackSpeed);
+				const prevSpeed = speeds[Math.max(currentIndex - 1, 0)];
+				if (prevSpeed === editorState.playbackSpeed) return;
+				const wasPlaying = editorState.playing;
+				if (wasPlaying) {
+					await editorActions.stopFastPlayback();
+				}
+				setEditorState("playbackSpeed", prevSpeed);
+				if (wasPlaying) {
+					await editorActions.startFastPlayback();
+				}
+			},
+
+			pause: async () => {
+				await editorActions.stopFastPlayback();
+				setEditorState("playbackSpeed", 1);
+			},
+
+			startFastPlayback: async () => {
+				if (editorState.playing) return;
+				const speed = editorState.playbackSpeed;
+				if (speed === 1) {
+					await commands.seekTo(Math.floor(editorState.playbackTime * FPS));
+					await commands.startPlayback(FPS, previewResolutionBase());
+					setEditorState("playing", true);
+				} else {
+					setEditorState("playing", true);
+					const frameTime = 1 / 30;
+					const intervalMs = (frameTime / speed) * 1000;
+					const intervalId = window.setInterval(() => {
+						const newTime = editorState.playbackTime + frameTime * speed;
+						const duration = totalDuration();
+						if (newTime >= duration) {
+							setEditorState("playbackTime", duration);
+							void editorActions.stopFastPlayback();
+						} else {
+							setEditorState("playbackTime", newTime);
+						}
+					}, intervalMs);
+					setEditorState("playbackInterval", intervalId);
+				}
+			},
+
+			stopFastPlayback: async () => {
+				if (!editorState.playing) return;
+				if (editorState.playbackSpeed === 1) {
+					await commands.stopPlayback();
+				} else {
+					if (editorState.playbackInterval !== null) {
+						clearInterval(editorState.playbackInterval);
+						setEditorState("playbackInterval", null);
+					}
+				}
+				setEditorState("playing", false);
 			},
 		};
 
