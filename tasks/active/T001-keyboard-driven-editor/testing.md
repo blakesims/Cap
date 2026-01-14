@@ -75,10 +75,47 @@ Open DevTools (`Cmd+Option+I`) and watch for errors while testing:
 
 ---
 
+## S03 Test Checklist - Playhead Navigation
+
+### Frame Stepping
+
+- [ ] `h` - Playhead moves backward ~0.033s (1 frame)
+- [ ] `l` - Playhead moves forward ~0.033s (1 frame)
+- [ ] Hold at start, press `h` → stays at 0 (doesn't go negative)
+- [ ] Hold at end, press `l` → stays at end (doesn't exceed duration)
+
+### Second Stepping
+
+- [ ] `Shift+h` - Playhead moves backward 1 second
+- [ ] `Shift+l` - Playhead moves forward 1 second
+- [ ] At 0.5s, press `Shift+h` → goes to 0 (clamps)
+
+### Segment Boundary Jumping
+
+- [ ] `w` - Jumps to next segment boundary (cut point)
+- [ ] `b` - Jumps to previous segment boundary
+- [ ] At start, press `b` → stays at 0
+- [ ] At end, press `w` → stays at end
+
+### Timeline Start/End
+
+- [ ] `0` - Jumps to timeline start (0.0s)
+- [ ] `$` (Shift+4) - Jumps to timeline end
+
+### Quick Navigation Test
+
+1. Press `0` → playhead at start
+2. Press `$` → playhead at end
+3. Press `b` → jumps to last segment boundary
+4. Press `w` → back to end
+5. Press `h` repeatedly → steps back frame by frame
+6. Press `Shift+l` → jumps forward 1 second
+
+---
+
 ## Known Limitations (Not Yet Implemented)
 
 - **No visual indicators** for IN/OUT points or marks (S05)
-- **No playhead navigation** with `h`/`l`/`w`/`b` (S03)
 - **No playback speed control** with `Ctrl+J`/`Ctrl+L`/`K` (S04)
 - **No IN/OUT region deletion** with `X` (S06)
 

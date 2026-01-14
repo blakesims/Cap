@@ -293,6 +293,38 @@ export function PlayerContent() {
 				combo: "`",
 				handler: () => editorActions.jumpToMark(),
 			},
+			{
+				combo: "H",
+				handler: () => editorActions.stepFrames(-1),
+			},
+			{
+				combo: "L",
+				handler: () => editorActions.stepFrames(1),
+			},
+			{
+				combo: "Shift+H",
+				handler: () => editorActions.stepSeconds(-1),
+			},
+			{
+				combo: "Shift+L",
+				handler: () => editorActions.stepSeconds(1),
+			},
+			{
+				combo: "W",
+				handler: () => editorActions.jumpToNextBoundary(),
+			},
+			{
+				combo: "B",
+				handler: () => editorActions.jumpToPrevBoundary(),
+			},
+			{
+				combo: "Digit0",
+				handler: () => editorActions.jumpToStart(),
+			},
+			{
+				combo: "Shift+Digit4",
+				handler: () => editorActions.jumpToEnd(),
+			},
 		],
 	);
 

@@ -6,7 +6,7 @@ Tracks all non-archived work (PLANNING, ACTIVE, PAUSED, ONGOING). Completed item
 
 | ID | Task Name | Priority(1-5) | Stories (Done/Total) | Status | Dependencies | Rules Required | Link |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| T001 | Keyboard-Driven Editor | 2 | 2/6 | ACTIVE | context.ts, useEditorShortcuts.ts, Timeline, Player | CLAUDE.md | [main.md](./active/T001-keyboard-driven-editor/main.md) |
+| T001 | Keyboard-Driven Editor | 2 | 3/6 | ACTIVE | context.ts, useEditorShortcuts.ts, Timeline, Player | CLAUDE.md | [main.md](./active/T001-keyboard-driven-editor/main.md) |
 
 Next available task id: T002
 (When a new task is created, increment this in the same change.)

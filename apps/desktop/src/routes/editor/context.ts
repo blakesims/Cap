@@ -749,6 +749,71 @@ export const [EditorContextProvider, useEditorContext] = createContextProvider(
 					setEditorState("mark", null);
 				});
 			},
+
+			stepFrames: (count: number) => {
+				const frameTime = 1 / 30;
+				const currentTime = editorState.previewTime ?? editorState.playbackTime;
+				const newTime = Math.max(0, Math.min(currentTime + count * frameTime, totalDuration()));
+				setEditorState("playbackTime", newTime);
+				setEditorState("previewTime", null);
+			},
+
+			stepSeconds: (count: number) => {
+				const currentTime = editorState.previewTime ?? editorState.playbackTime;
+				const newTime = Math.max(0, Math.min(currentTime + count, totalDuration()));
+				setEditorState("playbackTime", newTime);
+				setEditorState("previewTime", null);
+			},
+
+			jumpToStart: () => {
+				setEditorState("playbackTime", 0);
+				setEditorState("previewTime", null);
+			},
+
+			jumpToEnd: () => {
+				setEditorState("playbackTime", totalDuration());
+				setEditorState("previewTime", null);
+			},
+
+			jumpToNextBoundary: () => {
+				const currentTime = editorState.previewTime ?? editorState.playbackTime;
+				const segments = project.timeline?.segments ?? [];
+				const boundaries: number[] = [0];
+				let accumulated = 0;
+				for (const segment of segments) {
+					const duration = (segment.end - segment.start) / segment.timescale;
+					accumulated += duration;
+					boundaries.push(accumulated);
+				}
+				const next = boundaries.find((b) => b > currentTime + 0.001);
+				if (next !== undefined) {
+					setEditorState("playbackTime", next);
+					setEditorState("previewTime", null);
+				}
+			},
+
+			jumpToPrevBoundary: () => {
+				const currentTime = editorState.previewTime ?? editorState.playbackTime;
+				const segments = project.timeline?.segments ?? [];
+				const boundaries: number[] = [0];
+				let accumulated = 0;
+				for (const segment of segments) {
+					const duration = (segment.end - segment.start) / segment.timescale;
+					accumulated += duration;
+					boundaries.push(accumulated);
+				}
+				let prev: number | undefined;
+				for (let i = boundaries.length - 1; i >= 0; i--) {
+					if (boundaries[i] < currentTime - 0.001) {
+						prev = boundaries[i];
+						break;
+					}
+				}
+				if (prev !== undefined) {
+					setEditorState("playbackTime", prev);
+					setEditorState("previewTime", null);
+				}
+			},
 		};
 
 		const [micWaveforms] = createResource(() => commands.getMicWaveforms());
