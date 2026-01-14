@@ -28,7 +28,7 @@ import {
 	Slider,
 	topLeftAnimateClasses,
 } from "./ui";
-import { useEditorShortcuts } from "./useEditorShortcuts";
+import { useEditorShortcuts, isInputFocused } from "./useEditorShortcuts";
 import { formatTime } from "./utils";
 
 export function PlayerContent() {
@@ -44,6 +44,8 @@ export function PlayerContent() {
 		previewResolutionBase,
 		previewQuality,
 		setPreviewQuality,
+		editorActions,
+		projectActions,
 	} = useEditorContext();
 
 	const previewOptions = [
@@ -183,58 +185,116 @@ export function PlayerContent() {
 		}
 	};
 
+	const handleDeleteSelection = () => {
+		const selection = editorState.timeline.selection;
+		if (!selection) return;
+
+		if (selection.type === "zoom") {
+			projectActions.deleteZoomSegments(selection.indices);
+		} else if (selection.type === "mask") {
+			projectActions.deleteMaskSegments(selection.indices);
+		} else if (selection.type === "text") {
+			projectActions.deleteTextSegments(selection.indices);
+		} else if (selection.type === "clip") {
+			[...selection.indices]
+				.sort((a, b) => b - a)
+				.forEach((idx) => projectActions.deleteClipSegment(idx));
+		} else if (selection.type === "scene") {
+			[...selection.indices]
+				.sort((a, b) => b - a)
+				.forEach((idx) => projectActions.deleteSceneSegment(idx));
+		}
+	};
+
 	// Register keyboard shortcuts in one place
-	useEditorShortcuts(() => {
-		const el = document.activeElement;
-		if (!el) return true;
-		const tagName = el.tagName.toLowerCase();
-		const isContentEditable = el.getAttribute("contenteditable") === "true";
-		return !(
-			tagName === "input" ||
-			tagName === "textarea" ||
-			isContentEditable
-		);
-	}, [
-		{
-			combo: "S",
-			handler: () =>
-				setEditorState(
-					"timeline",
-					"interactMode",
-					editorState.timeline.interactMode === "split" ? "seek" : "split",
-				),
-		},
-		{
-			combo: "Mod+=",
-			handler: () =>
-				editorState.timeline.transform.updateZoom(
-					editorState.timeline.transform.zoom / 1.1,
-					editorState.playbackTime,
-				),
-		},
-		{
-			combo: "Mod+-",
-			handler: () =>
-				editorState.timeline.transform.updateZoom(
-					editorState.timeline.transform.zoom * 1.1,
-					editorState.playbackTime,
-				),
-		},
-		{
-			combo: "Space",
-			handler: async () => {
-				const prevTime = editorState.previewTime;
-
-				if (!editorState.playing) {
-					if (prevTime !== null) setEditorState("playbackTime", prevTime);
-
-					await commands.seekTo(Math.floor(editorState.playbackTime * FPS));
-				}
-
-				await handlePlayPauseClick();
+	useEditorShortcuts(
+		() => !isInputFocused(),
+		[
+			{
+				combo: "S",
+				handler: () =>
+					setEditorState(
+						"timeline",
+						"interactMode",
+						editorState.timeline.interactMode === "split" ? "seek" : "split",
+					),
 			},
-		},
-	]);
+			{
+				combo: "Mod+=",
+				handler: () =>
+					editorState.timeline.transform.updateZoom(
+						editorState.timeline.transform.zoom / 1.1,
+						editorState.playbackTime,
+					),
+			},
+			{
+				combo: "Mod+-",
+				handler: () =>
+					editorState.timeline.transform.updateZoom(
+						editorState.timeline.transform.zoom * 1.1,
+						editorState.playbackTime,
+					),
+			},
+			{
+				combo: "Space",
+				handler: async () => {
+					const prevTime = editorState.previewTime;
+
+					if (!editorState.playing) {
+						if (prevTime !== null) setEditorState("playbackTime", prevTime);
+
+						await commands.seekTo(Math.floor(editorState.playbackTime * FPS));
+					}
+
+					await handlePlayPauseClick();
+				},
+			},
+			{
+				combo: "C",
+				handler: () => {
+					const time = editorState.previewTime ?? editorState.playbackTime;
+					if (time !== null && time !== undefined) {
+						projectActions.splitClipSegment(time);
+					}
+				},
+			},
+			{
+				combo: "Backspace",
+				handler: handleDeleteSelection,
+			},
+			{
+				combo: "Delete",
+				handler: handleDeleteSelection,
+			},
+			{
+				combo: "Escape",
+				handler: () => {
+					setEditorState("timeline", "selection", null);
+					editorActions.clearInOut();
+				},
+			},
+			{
+				combo: "I",
+				handler: () => editorActions.setInPoint(),
+			},
+			{
+				combo: "O",
+				handler: () => editorActions.setOutPoint(),
+			},
+			{
+				combo: "M",
+				handler: () => editorActions.setMark(),
+			},
+			{
+				combo: "'",
+				handler: () => editorActions.jumpToMark(),
+			},
+			{
+				combo: "`",
+				handler: () => editorActions.jumpToMark(),
+			},
+		],
+	);
 
 	return (
 		<div class="flex flex-col flex-1 min-h-0">
