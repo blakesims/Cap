@@ -32,7 +32,7 @@ Planning phase complete. Prototype validated. Codebase reviewed. Ready for imple
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | S01 | State management for IN/OUT points and marks | Low | ~2h | **Done** | [S01-state-management.md](./stories/S01-state-management.md) |
 | S02 | Core keyboard bindings infrastructure | Medium | ~4-6h | **Done** | [S02-keyboard-bindings.md](./stories/S02-keyboard-bindings.md) |
-| S03 | Playhead navigation (frame step, boundary jump) | Low-Medium | ~3-4h | Planned | Inline |
+| S03 | Playhead navigation (frame step, boundary jump) | Low-Medium | ~3-4h | **Done** | [S03-playhead-navigation.md](./stories/S03-playhead-navigation.md) |
 | S04 | Playback speed control (frontend-only) | Medium | ~4-5h | Planned | Inline |
 | S05 | IN/OUT points and marks with visual feedback | Low-Medium | ~3-4h | Planned | Inline |
 | S06 | Delete IN/OUT region (phased approach) | High | ~8-10h | Planned | Inline |
