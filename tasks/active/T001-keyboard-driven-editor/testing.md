@@ -17,34 +17,34 @@ Open or create a recording with multiple segments to test deletion/cutting.
 
 ### Existing Shortcuts (Regression)
 
-- [ ] `S` - Toggles split/scissors mode (cursor changes)
-- [ ] `Space` - Toggles play/pause
-- [ ] `Cmd+=` - Zooms in timeline
-- [ ] `Cmd+-` - Zooms out timeline
-- [ ] `Cmd+Z` - Undo
-- [ ] `Cmd+Shift+Z` - Redo
+- [x] `S` - Toggles split/scissors mode (cursor changes)
+- [x] `Space` - Toggles play/pause
+- [x] `Cmd+=` - Zooms in timeline
+- [x] `Cmd+-` - Zooms out timeline
+- [x] `Cmd+Z` - Undo
+- [x] `Cmd+Shift+Z` - Redo
 
 ### Migrated Shortcuts (from Timeline)
 
-- [ ] `C` - Cuts clip at playhead position (creates split)
-- [ ] `Backspace` - Deletes selected segment (select one first by clicking)
-- [ ] `Delete` - Same as Backspace
-- [ ] `Escape` - Clears selection (segment deselects)
+- [x] `C` - Cuts clip at playhead position (creates split)
+- [x] `Backspace` - Deletes selected segment (select one first by clicking)
+- [x] `Delete` - Same as Backspace
+- [x] `Escape` - Clears selection (segment deselects)
 
 ### New Shortcuts (S01/S02)
 
-- [ ] `I` - Sets IN point (no visual yet, but no error in console)
-- [ ] `O` - Sets OUT point (no visual yet, but no error in console)
-- [ ] `M` - Sets mark (no visual yet, but no error in console)
-- [ ] `'` (apostrophe) - Jump to mark (playhead moves if mark was set)
-- [ ] `` ` `` (backtick) - Same as apostrophe
-- [ ] `Escape` - Also clears IN/OUT points (extended behavior)
+- [x] `I` - Sets IN point (no visual yet, but no error in console)
+- [x] `O` - Sets OUT point (no visual yet, but no error in console)
+- [x] `M` - Sets mark (no visual yet, but no error in console)
+- [x] `'` (apostrophe) - Jump to mark (playhead moves if mark was set)
+- [x] `` ` `` (backtick) - Same as apostrophe
+- [x] `Escape` - Also clears IN/OUT points (extended behavior)
 
 ### Input Focus Guard
 
-- [ ] Click on a text input field in the editor (e.g., title field)
-- [ ] Press `I`, `O`, `S`, `C` while focused on input
-- [ ] **Expected**: Characters type into field, shortcuts do NOT fire
+- [x] Click on a text input field in the editor (e.g., title field)
+- [x] Press `I`, `O`, `S`, `C` while focused on input
+- [x] **Expected**: Characters type into field, shortcuts do NOT fire
 - [ ] Click outside the input field
 - [ ] Press `S`
 - [ ] **Expected**: Split mode toggles (shortcuts work again)
@@ -79,28 +79,34 @@ Open DevTools (`Cmd+Option+I`) and watch for errors while testing:
 
 ### Frame Stepping
 
-- [ ] `h` - Playhead moves backward ~0.033s (1 frame)
-- [ ] `l` - Playhead moves forward ~0.033s (1 frame)
-- [ ] Hold at start, press `h` → stays at 0 (doesn't go negative)
-- [ ] Hold at end, press `l` → stays at end (doesn't exceed duration)
+- [x] `h` - Playhead moves backward ~0.033s (1 frame)
+- [x] `l` - Playhead moves forward ~0.033s (1 frame)
+- [x] Hold at start, press `h` → stays at 0 (doesn't go negative)
+- [x] Hold at end, press `l` → stays at end (doesn't exceed duration)
 
 ### Second Stepping
 
-- [ ] `Shift+h` - Playhead moves backward 1 second
-- [ ] `Shift+l` - Playhead moves forward 1 second
-- [ ] At 0.5s, press `Shift+h` → goes to 0 (clamps)
+- [x] `Shift+h` - Playhead moves backward 1 second
+- [x] `Shift+l` - Playhead moves forward 1 second
+- [x] At 0.5s, press `Shift+h` → goes to 0 (clamps)
+
+One issue that I'm seeing here is when the editor... let's say I... 7. Let's say that my cursor is in the middle of the viewfinder. If I move, if I press B or shift L, the cursor will continue to jump and outside of the viewport and it will in fact overlap with the UI elements that are beyond the timeline. So ideally I think what we need to do is bound the view by scrolling left and right to make sure that the cursor is within view. I believe that would be the correct decision.
+
 
 ### Segment Boundary Jumping
 
-- [ ] `w` - Jumps to next segment boundary (cut point)
-- [ ] `b` - Jumps to previous segment boundary
-- [ ] At start, press `b` → stays at 0
-- [ ] At end, press `w` → stays at end
+- [x] `w` - Jumps to next segment boundary (cut point)
+- [x] `b` - Jumps to previous segment boundary
+- [x] At start, press `b` → stays at 0
+- [x] At end, press `w` → stays at end
+
+Again, only issue here is that B and W will jump the cursor outside of the current viewport and it may even overlap with elements that are outside of the timeline view, if that makes sense.
+
 
 ### Timeline Start/End
 
-- [ ] `0` - Jumps to timeline start (0.0s)
-- [ ] `$` (Shift+4) - Jumps to timeline end
+- [x] `0` - Jumps to timeline start (0.0s) ✓ FIXED
+- [x] `$` (Shift+4) - Jumps to timeline end ✓ FIXED
 
 ### Quick Navigation Test
 
@@ -113,11 +119,51 @@ Open DevTools (`Cmd+Option+I`) and watch for errors while testing:
 
 ---
 
+## S04 Test Checklist - Playback Speed Control
+
+### Speed Increase (Ctrl+L)
+
+- [ ] From paused at 1x, press `Ctrl+L` → starts playing at 2x, indicator shows "2x"
+- [ ] While playing at 2x, press `Ctrl+L` → speeds up to 4x, indicator shows "4x"
+- [ ] While playing at 4x, press `Ctrl+L` → speeds up to 8x, indicator shows "8x"
+- [ ] While playing at 8x, press `Ctrl+L` → stays at 8x (max)
+
+### Speed Decrease (Ctrl+J)
+
+- [ ] While playing at 8x, press `Ctrl+J` → slows to 4x
+- [ ] While playing at 4x, press `Ctrl+J` → slows to 2x
+- [ ] While playing at 2x, press `Ctrl+J` → slows to 1x (normal playback with audio)
+- [ ] While playing at 1x, press `Ctrl+J` → stays at 1x (min)
+
+### Pause (K)
+
+- [ ] While playing at any speed, press `K` → pauses AND resets speed to 1x
+- [ ] Press `Ctrl+L` after `K` → starts at 2x (not resuming old speed)
+
+### Speed Indicator
+
+- [ ] Indicator visible in top-right when playing at 2x/4x/8x
+- [ ] Indicator NOT visible when paused
+- [ ] Indicator NOT visible when playing at 1x
+
+### Audio
+
+- [ ] At 1x speed: audio plays normally
+- [ ] At 2x/4x/8x speeds: audio is silent (no Rust playback)
+
+### Edge Cases
+
+- [ ] Fast playback stops at end of timeline
+- [ ] After stopping at end, `Ctrl+L` restarts from beginning at 2x
+- [ ] Clicking timeline during fast playback continues from new position
+
+---
+
 ## Known Limitations (Not Yet Implemented)
 
 - **No visual indicators** for IN/OUT points or marks (S05)
-- **No playback speed control** with `Ctrl+J`/`Ctrl+L`/`K` (S04)
 - **No IN/OUT region deletion** with `X` (S06)
+- **Viewport doesn't follow cursor** - navigation can move playhead outside visible area (future enhancement)
 
 ---
 
