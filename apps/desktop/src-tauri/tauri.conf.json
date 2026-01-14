@@ -54,6 +54,7 @@
 			"../src/assets/rive/*.riv": "assets/rive/"
 		},
 		"macOS": {
+			"signingIdentity": "cap-dev-signing",
 			"dmg": {
 				"background": "assets/dmg-background.png",
 				"appPosition": {
