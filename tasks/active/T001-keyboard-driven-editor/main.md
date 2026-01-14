@@ -62,6 +62,8 @@ Planning phase complete. Prototype validated. Codebase reviewed. Ready for imple
 -   **Known Findings:**
     -   `c` key already does cut at playhead (no conflict)
     -   Escape currently clears selection - extend to also clear IN/OUT
+-   **Bug Fixed (2026-01-14):**
+    -   Space bar shortcut was broken by S02 implementation. The `normalizeCombo()` function added a branch for single-character keys (`e.key.length === 1`) to handle case-insensitive letters, but this accidentally intercepted Space (`" ".length === 1`), returning `" "` instead of `"Space"`. Fix: exclude `e.code === "Space"` from that branch.
 
 ### S03 - Playhead Navigation
 **Complexity: Low-Medium (~3-4h)**

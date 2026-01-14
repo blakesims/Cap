@@ -27,7 +27,7 @@ function normalizeCombo(e: KeyboardEvent): string {
 
 	let key: string;
 
-	if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
+	if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && e.code !== "Space") {
 		key = e.key.toUpperCase();
 	} else {
 		switch (e.code) {
