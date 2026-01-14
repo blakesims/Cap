@@ -318,11 +318,11 @@ export function PlayerContent() {
 				handler: () => editorActions.jumpToPrevBoundary(),
 			},
 			{
-				combo: "Digit0",
+				combo: "0",
 				handler: () => editorActions.jumpToStart(),
 			},
 			{
-				combo: "Shift+Digit4",
+				combo: "Shift+$",
 				handler: () => editorActions.jumpToEnd(),
 			},
 		],

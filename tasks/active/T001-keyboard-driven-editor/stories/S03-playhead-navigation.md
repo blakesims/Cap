@@ -186,8 +186,8 @@ jumpToPrevBoundary: () => {
 **Key notes:**
 - `H`/`L` use single uppercase letter (no Shift in combo string)
 - `Shift+H`/`Shift+L` explicitly include Shift modifier
-- `0` maps to `"Digit0"` because `normalizeCombo()` uses `e.code` for non-letter keys
-- `$` (Shift+4) maps to `"Shift+Digit4"` because digit keys use their code values
+- `0` maps to `"0"` because `normalizeCombo()` uses `e.key.toUpperCase()` for single printable chars
+- `$` (Shift+4) maps to `"Shift+$"` because `e.key` returns the shifted character
 
 ---
 
@@ -201,8 +201,8 @@ jumpToPrevBoundary: () => {
 | `Shift+l` | `"Shift+L"` | Step forward | N/A | +1.0s |
 | `w` | `"W"` | Jump to next segment boundary | N/A | Variable |
 | `b` | `"B"` | Jump to previous segment boundary | N/A | Variable |
-| `0` | `"Digit0"` | Jump to timeline start | N/A | 0.0s |
-| `$` | `"Shift+Digit4"` | Jump to timeline end | N/A | `totalDuration()` |
+| `0` | `"0"` | Jump to timeline start | N/A | 0.0s |
+| `$` | `"Shift+$"` | Jump to timeline end | N/A | `totalDuration()` |
 
 ---
 
