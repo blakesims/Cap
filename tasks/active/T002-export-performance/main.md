@@ -4,7 +4,7 @@
 -  **Task Name:** Export Performance Optimization
 -  **Priority:** 3
 -  **Number of Stories:** 5
--  **Current Status:** PLANNING
+-  **Current Status:** ACTIVE
 -  **Platform:** macOS only (Windows feasible as future task)
 -  **Dependencies:** `crates/export/`, `crates/rendering/`, `crates/enc-ffmpeg/`, `crates/gpu-converters/`, `crates/frame-converter/`
 -  **Rules Required:** CLAUDE.md (no comments, Rust clippy rules)
@@ -20,7 +20,7 @@
 Improve video export speed on macOS by addressing identified bottlenecks in the export pipeline, primarily by moving RGBA→NV12 format conversion to GPU before readback, and secondarily by optimizing buffer sizes with safety mechanisms.
 
 ## 2. Overall Status
-Planning phase. Performance analysis complete. Code review complete. Bottlenecks identified and verified against codebase. Ready for implementation.
+Active development. Performance analysis complete. Code review complete. Bottlenecks identified and verified against codebase. Implementation in progress.
 
 ### Current Architecture
 ```
@@ -46,7 +46,7 @@ Decode (HW) → Render/Composite (GPU/RGBA) → Format Convert (GPU ✅) → GPU
 
 | Story ID | Story Name / Objective | Complexity | Est. Hours | Status | Link |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| S01 | Increase channel buffer sizes (with safety) | Low | ~2h | Planned | Inline |
+| S01 | Increase channel buffer sizes (with safety) | Low | ~2h | Done | [S01-buffer-sizes.md](./stories/S01-buffer-sizes.md) |
 | S02 | Audit format conversion flow | Low | ~2h | Planned | Inline |
 | S03 | Implement RGBAToNV12 GPU converter | Medium | ~4-6h | Planned | Inline |
 | S04 | Integrate GPU conversion into frame pipeline | Medium-High | ~6-8h | Planned | Inline |
@@ -314,3 +314,26 @@ Code review identified several corrections to original plan:
 5. **Memory savings with NV12** - Switching to NV12 readback saves ~60% memory
 
 Original estimates revised upward: 35-55% improvement (from 20-40%) due to combined bandwidth + CPU savings.
+
+## 10. Learnings (S01)
+
+### API Verification Critical
+- **Issue**: Plan assumed `tokio::sync::mpsc::Sender::send_timeout()` exists - it doesn't
+- **Fix**: Must use `tokio::time::timeout()` wrapper pattern (already used elsewhere in codebase)
+- **Impact**: Always verify API existence before planning implementation
+
+### Error Type Precision
+- **Issue**: Confused `RecvTimeoutError` vs `SendTimeoutError` for std sync channels
+- **Fix**: For send operations, use `std::sync::mpsc::SendTimeoutError`
+- **Impact**: Error types are operation-specific, not channel-specific
+
+### Architecture Dictates Timeout Strategy
+- **Issue**: MP4 and GIF exports have different architectures
+  - MP4: renderer -> render_task -> encoder (sync channel in middle)
+  - GIF: renderer -> encoder (no intermediate task)
+- **Impact**: Timeout protection must match architecture. GIF timeout requires cap_rendering changes (deferred to S04)
+
+### Dependency Version Drift
+- **Issue**: Workspace defines `sysinfo = "0.32"` but recording crate uses `"0.35"`
+- **Fix**: Use explicit version matching recording crate
+- **Impact**: Check actual dependency versions, not just workspace definitions

@@ -6,7 +6,7 @@ use specta::Type;
 use std::path::PathBuf;
 use tracing::trace;
 
-use crate::{ExportError, ExporterBase};
+use crate::{ExportError, ExporterBase, buffer_config::ExportBufferConfig};
 
 #[derive(Deserialize, Clone, Copy, Debug, Type)]
 pub struct GifQuality {
@@ -41,7 +41,9 @@ impl GifExportSettings {
     ) -> Result<PathBuf, String> {
         let meta = &base.studio_meta;
 
-        let (tx_image_data, mut video_rx) = tokio::sync::mpsc::channel::<(RenderedFrame, u32)>(4);
+        let buffer_config = ExportBufferConfig::for_current_system();
+
+        let (tx_image_data, mut video_rx) = tokio::sync::mpsc::channel::<(RenderedFrame, u32)>(buffer_config.rendered_frame_buffer);
 
         let fps = self.fps;
 

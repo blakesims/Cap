@@ -1,4 +1,4 @@
-use crate::ExporterBase;
+use crate::{ExporterBase, buffer_config::ExportBufferConfig};
 use cap_editor::{AudioRenderer, get_audio_segments};
 use cap_enc_ffmpeg::{AudioEncoder, aac::AACEncoder, h264::H264Encoder, mp4::*};
 use cap_media_info::{RawVideoFormat, VideoInfo};
@@ -56,11 +56,13 @@ impl Mp4ExportSettings {
         let output_path = base.output_path.clone();
         let meta = &base.studio_meta;
 
+        let buffer_config = ExportBufferConfig::for_current_system();
+
         info!("Exporting mp4 with settings: {:?}", &self);
         info!("Expected to render {} frames", base.total_frames(self.fps));
 
-        let (tx_image_data, mut video_rx) = tokio::sync::mpsc::channel::<(RenderedFrame, u32)>(8);
-        let (frame_tx, frame_rx) = std::sync::mpsc::sync_channel::<MP4Input>(8);
+        let (tx_image_data, mut video_rx) = tokio::sync::mpsc::channel::<(RenderedFrame, u32)>(buffer_config.rendered_frame_buffer);
+        let (frame_tx, frame_rx) = std::sync::mpsc::sync_channel::<MP4Input>(buffer_config.encoder_input_buffer);
 
         let fps = self.fps;
 
@@ -132,6 +134,7 @@ impl Mp4ExportSettings {
         let render_task = tokio::spawn({
             let project = base.project_config.clone();
             let project_path = base.project_path.clone();
+            let send_timeout = buffer_config.send_timeout;
             async move {
                 let mut frame_count = 0;
                 let mut first_frame = None;
@@ -213,19 +216,24 @@ impl Mp4ExportSettings {
                         })
                     });
 
-                    if frame_tx
-                        .send(MP4Input {
-                            audio: audio_frame,
-                            video: video_info.wrap_frame(
-                                &frame.data,
-                                frame_number as i64,
-                                frame.padded_bytes_per_row as usize,
-                            ),
-                        })
-                        .is_err()
-                    {
-                        warn!("Renderer task sender dropped. Exiting");
-                        return Ok(());
+                    let mp4_input = MP4Input {
+                        audio: audio_frame,
+                        video: video_info.wrap_frame(
+                            &frame.data,
+                            frame_number as i64,
+                            frame.padded_bytes_per_row as usize,
+                        ),
+                    };
+
+                    match frame_tx.send_timeout(mp4_input, send_timeout) {
+                        Ok(()) => {}
+                        Err(std::sync::mpsc::SendTimeoutError::Timeout(_)) => {
+                            return Err("Export stalled - encoder not consuming frames".to_string());
+                        }
+                        Err(std::sync::mpsc::SendTimeoutError::Disconnected(_)) => {
+                            warn!("Renderer task sender dropped. Exiting");
+                            return Ok(());
+                        }
                     }
 
                     frame_count += 1;

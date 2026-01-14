@@ -7,7 +7,7 @@ Tracks all non-archived work (PLANNING, ACTIVE, PAUSED, ONGOING). Completed item
 | ID | Task Name | Priority(1-5) | Stories (Done/Total) | Status | Dependencies | Rules Required | Link |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | T001 | Keyboard-Driven Editor | 2 | 4/6 | ACTIVE | context.ts, useEditorShortcuts.ts, Timeline, Player | CLAUDE.md | [main.md](./active/T001-keyboard-driven-editor/main.md) |
-| T002 | Export Performance Optimization | 3 | 0/5 | PLANNING | crates/export, crates/rendering, crates/enc-ffmpeg, crates/gpu-converters | CLAUDE.md | [main.md](./planning/T002-export-performance/main.md) |
+| T002 | Export Performance Optimization | 3 | 1/5 | ACTIVE | crates/export, crates/rendering, crates/enc-ffmpeg, crates/gpu-converters | CLAUDE.md | [main.md](./active/T002-export-performance/main.md) |
 
 Next available task id: T003
 (When a new task is created, increment this in the same change.)

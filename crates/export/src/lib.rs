@@ -1,3 +1,4 @@
+pub mod buffer_config;
 pub mod gif;
 pub mod mp4;
 
