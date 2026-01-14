@@ -466,54 +466,6 @@ export const [EditorContextProvider, useEditorContext] = createContextProvider(
 			},
 		};
 
-	const editorActions = {
-		setInPoint: () => {
-			const time = editorState.previewTime ?? editorState.playbackTime;
-			setEditorState("inPoint", time);
-			if (editorState.outPoint !== null && editorState.outPoint < time) {
-				setEditorState("outPoint", null);
-			}
-		},
-
-		setOutPoint: () => {
-			const time = editorState.previewTime ?? editorState.playbackTime;
-			setEditorState("outPoint", time);
-			if (editorState.inPoint !== null && editorState.inPoint > time) {
-				setEditorState("inPoint", null);
-			}
-		},
-
-		clearInOut: () => {
-			batch(() => {
-				setEditorState("inPoint", null);
-				setEditorState("outPoint", null);
-			});
-		},
-
-		setMark: () => {
-			const time = editorState.previewTime ?? editorState.playbackTime;
-			setEditorState("mark", time);
-		},
-
-		jumpToMark: () => {
-			if (editorState.mark !== null) {
-				setEditorState("playbackTime", editorState.mark);
-			}
-		},
-
-		clearMark: () => {
-			setEditorState("mark", null);
-		},
-
-		clearAll: () => {
-			batch(() => {
-				setEditorState("inPoint", null);
-				setEditorState("outPoint", null);
-				setEditorState("mark", null);
-			});
-		},
-	};
-
 		let projectSaveTimeout: number | undefined;
 		let saveInFlight = false;
 		let shouldResave = false;
@@ -750,6 +702,54 @@ export const [EditorContextProvider, useEditorContext] = createContextProvider(
 				hoveredTrack: null as null | TimelineTrackType,
 			},
 		});
+
+		const editorActions = {
+			setInPoint: () => {
+				const time = editorState.previewTime ?? editorState.playbackTime;
+				setEditorState("inPoint", time);
+				if (editorState.outPoint !== null && editorState.outPoint < time) {
+					setEditorState("outPoint", null);
+				}
+			},
+
+			setOutPoint: () => {
+				const time = editorState.previewTime ?? editorState.playbackTime;
+				setEditorState("outPoint", time);
+				if (editorState.inPoint !== null && editorState.inPoint > time) {
+					setEditorState("inPoint", null);
+				}
+			},
+
+			clearInOut: () => {
+				batch(() => {
+					setEditorState("inPoint", null);
+					setEditorState("outPoint", null);
+				});
+			},
+
+			setMark: () => {
+				const time = editorState.previewTime ?? editorState.playbackTime;
+				setEditorState("mark", time);
+			},
+
+			jumpToMark: () => {
+				if (editorState.mark !== null) {
+					setEditorState("playbackTime", editorState.mark);
+				}
+			},
+
+			clearMark: () => {
+				setEditorState("mark", null);
+			},
+
+			clearAll: () => {
+				batch(() => {
+					setEditorState("inPoint", null);
+					setEditorState("outPoint", null);
+					setEditorState("mark", null);
+				});
+			},
+		};
 
 		const [micWaveforms] = createResource(() => commands.getMicWaveforms());
 		const [systemAudioWaveforms] = createResource(() =>
