@@ -95,17 +95,39 @@ git rebase --continue
 git rebase --abort
 ```
 
-## Building
+## App Tiers
 
-### Dev Mode (quick iteration)
+| App | Purpose | Location |
+|-----|---------|----------|
+| **Cap** | Official release | `/Applications/Cap.app` |
+| **Cap - Development** | Built fork for daily use | `/Applications/Cap - Development.app` |
+| **Local dev** | Test changes before building | Terminal only (`pnpm dev:desktop`) |
+
+## Building & Running
+
+### Test Changes Locally (doesn't affect installed app)
 ```bash
 pnpm dev:desktop
 ```
+Runs in terminal, uses `so.cap.desktop.dev` data directory. Kill with Ctrl+C.
 
-### Release Build (install as app)
+### Build & Install Cap - Development
 ```bash
-pnpm tauri:build
-cp -r "apps/desktop/src-tauri/target/release/bundle/macos/Cap - Development.app" /Applications/
+./scripts/fork-update.sh install
+```
+Builds release, installs to `/Applications`, re-signs with `cap-dev-signing` certificate. Permissions persist across rebuilds.
+
+### Launch from Raycast (with stdout handling)
+```bash
+./scripts/fork-update.sh launch
+```
+Or update your Raycast script to call this instead of `open`.
+
+### Other Script Commands
+```bash
+./scripts/fork-update.sh sync      # Rebase blake/stable onto upstream
+./scripts/fork-update.sh status    # Show branch status
+./scripts/fork-update.sh pull      # Pull latest (for server)
 ```
 
 ## Remotes Setup
