@@ -466,6 +466,54 @@ export const [EditorContextProvider, useEditorContext] = createContextProvider(
 			},
 		};
 
+	const editorActions = {
+		setInPoint: () => {
+			const time = editorState.previewTime ?? editorState.playbackTime;
+			setEditorState("inPoint", time);
+			if (editorState.outPoint !== null && editorState.outPoint < time) {
+				setEditorState("outPoint", null);
+			}
+		},
+
+		setOutPoint: () => {
+			const time = editorState.previewTime ?? editorState.playbackTime;
+			setEditorState("outPoint", time);
+			if (editorState.inPoint !== null && editorState.inPoint > time) {
+				setEditorState("inPoint", null);
+			}
+		},
+
+		clearInOut: () => {
+			batch(() => {
+				setEditorState("inPoint", null);
+				setEditorState("outPoint", null);
+			});
+		},
+
+		setMark: () => {
+			const time = editorState.previewTime ?? editorState.playbackTime;
+			setEditorState("mark", time);
+		},
+
+		jumpToMark: () => {
+			if (editorState.mark !== null) {
+				setEditorState("playbackTime", editorState.mark);
+			}
+		},
+
+		clearMark: () => {
+			setEditorState("mark", null);
+		},
+
+		clearAll: () => {
+			batch(() => {
+				setEditorState("inPoint", null);
+				setEditorState("outPoint", null);
+				setEditorState("mark", null);
+			});
+		},
+	};
+
 		let projectSaveTimeout: number | undefined;
 		let saveInFlight = false;
 		let shouldResave = false;
@@ -638,6 +686,9 @@ export const [EditorContextProvider, useEditorContext] = createContextProvider(
 			previewTime: null as number | null,
 			playbackTime: 0,
 			playing: false,
+			inPoint: null as number | null,
+			outPoint: null as number | null,
+			mark: null as number | null,
 			captions: {
 				isGenerating: false,
 				isDownloading: false,
@@ -719,6 +770,7 @@ export const [EditorContextProvider, useEditorContext] = createContextProvider(
 			project,
 			setProject,
 			projectActions,
+			editorActions,
 			projectHistory: createStoreHistory(project, setProject),
 			editorState,
 			setEditorState,

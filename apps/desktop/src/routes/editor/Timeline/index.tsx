@@ -306,53 +306,6 @@ export function Timeline() {
 		}
 	}
 
-	createEventListener(window, "keydown", (e) => {
-		const hasNoModifiers = !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey;
-
-		if (
-			document.activeElement instanceof HTMLInputElement ||
-			document.activeElement instanceof HTMLTextAreaElement
-		) {
-			return;
-		}
-
-		if (e.code === "Backspace" || (e.code === "Delete" && hasNoModifiers)) {
-			const selection = editorState.timeline.selection;
-			if (!selection) return;
-
-			if (selection.type === "zoom") {
-				projectActions.deleteZoomSegments(selection.indices);
-			} else if (selection.type === "mask") {
-				projectActions.deleteMaskSegments(selection.indices);
-			} else if (selection.type === "text") {
-				projectActions.deleteTextSegments(selection.indices);
-			} else if (selection.type === "clip") {
-				// Delete all selected clips in reverse order
-				[...selection.indices]
-					.sort((a, b) => b - a)
-					.forEach((idx) => {
-						projectActions.deleteClipSegment(idx);
-					});
-			} else if (selection.type === "scene") {
-				// Delete all selected scenes in reverse order
-				[...selection.indices]
-					.sort((a, b) => b - a)
-					.forEach((idx) => {
-						projectActions.deleteSceneSegment(idx);
-					});
-			}
-		} else if (e.code === "KeyC" && hasNoModifiers) {
-			// Allow cutting while playing: use playbackTime when previewTime is null
-			const time = editorState.previewTime ?? editorState.playbackTime;
-			if (time === null || time === undefined) return;
-
-			projectActions.splitClipSegment(time);
-		} else if (e.code === "Escape" && hasNoModifiers) {
-			// Deselect all selected segments
-			setEditorState("timeline", "selection", null);
-		}
-	});
-
 	const split = () => editorState.timeline.interactMode === "split";
 
 	const maskImage = () => {
