@@ -1,5 +1,6 @@
 mod bgra_rgba;
 mod nv12_rgba;
+mod rgba_nv12;
 mod util;
 mod uyvy;
 mod uyvy_nv12;
@@ -10,6 +11,7 @@ mod yuyv_rgba;
 
 pub use bgra_rgba::BGRAToRGBA;
 pub use nv12_rgba::NV12ToRGBA;
+pub use rgba_nv12::RGBAToNV12;
 pub use uyvy_nv12::UYVYToNV12;
 pub use uyvy_rgba::UYVYToRGBA;
 pub use yuyv_nv12::YUYVToNV12;
@@ -27,6 +29,8 @@ pub enum GpuConverterError {
 pub enum ConvertError {
     #[error("YUYV format requires even width, got {width}")]
     OddWidth { width: u32 },
+    #[error("NV12 format requires even height, got {height}")]
+    OddHeight { height: u32 },
     #[error("buffer size mismatch: expected {expected} bytes, got {actual}")]
     BufferSizeMismatch { expected: usize, actual: usize },
     #[error("failed to create input texture: {0}")]
