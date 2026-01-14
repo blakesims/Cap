@@ -47,7 +47,7 @@ Decode (HW) → Render/Composite (GPU/RGBA) → Format Convert (GPU ✅) → GPU
 | Story ID | Story Name / Objective | Complexity | Est. Hours | Status | Link |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | S01 | Increase channel buffer sizes (with safety) | Low | ~2h | Done | [S01-buffer-sizes.md](./stories/S01-buffer-sizes.md) |
-| S02 | Audit format conversion flow | Low | ~2h | Planned | Inline |
+| S02 | Audit format conversion flow | Low | ~2h | Done | [S02-format-audit.md](./stories/S02-format-audit.md) |
 | S03 | Implement RGBAToNV12 GPU converter | Medium | ~4-6h | Planned | Inline |
 | S04 | Integrate GPU conversion into frame pipeline | Medium-High | ~6-8h | Planned | Inline |
 | S05 | Benchmark and validate improvements | Low | ~2h | Planned | Inline |
