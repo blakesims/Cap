@@ -270,7 +270,33 @@ export function PlayerContent() {
 			},
 			{
 				combo: "Backspace",
-				handler: handleDeleteSelection,
+				handler: () => {
+					if (editorState.timeline.selection !== null) {
+						handleDeleteSelection();
+					} else if (
+						editorState.inPoint !== null &&
+						editorState.outPoint !== null
+					) {
+						editorActions.deleteInOutRegion();
+					} else {
+						editorActions.deleteSegmentAtPlayhead();
+					}
+				},
+			},
+			{
+				combo: "X",
+				handler: () => {
+					if (editorState.timeline.selection !== null) {
+						handleDeleteSelection();
+					} else if (
+						editorState.inPoint !== null &&
+						editorState.outPoint !== null
+					) {
+						editorActions.deleteInOutRegion();
+					} else {
+						editorActions.deleteSegmentAtPlayhead();
+					}
+				},
 			},
 			{
 				combo: "Delete",
@@ -420,7 +446,10 @@ export function PlayerContent() {
 				</div>
 			</div>
 			<PreviewCanvas />
-			<SpeedIndicator speed={editorState.playbackSpeed} playing={editorState.playing} />
+			<SpeedIndicator
+				speed={editorState.playbackSpeed}
+				playing={editorState.playing}
+			/>
 			<div class="flex overflow-hidden z-10 flex-row gap-3 justify-between items-center p-5">
 				<div class="flex-1">
 					<Time
