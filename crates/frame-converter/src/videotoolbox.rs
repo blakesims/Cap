@@ -421,24 +421,23 @@ impl VideoToolboxConverter {
 
             let dest_ptr = CVPixelBufferGetBaseAddress(pixel_buffer);
             let dest_stride = CVPixelBufferGetBytesPerRow(pixel_buffer);
+            let row_bytes = (width as usize) * 4;
 
             for row in 0..(height as usize) {
-                let src_offset = row * stride;
-                let dest_offset = row * dest_stride;
+                let src_row = rgba_data.as_ptr().add(row * stride);
+                let dest_row = dest_ptr.add(row * dest_stride);
+
+                let src_u32 = src_row as *const u32;
+                let dest_u32 = dest_row as *mut u32;
 
                 for col in 0..(width as usize) {
-                    let src_pixel_offset = src_offset + col * 4;
-                    let dest_pixel_offset = dest_offset + col * 4;
-
-                    let r = *rgba_data.get_unchecked(src_pixel_offset + 0);
-                    let g = *rgba_data.get_unchecked(src_pixel_offset + 1);
-                    let b = *rgba_data.get_unchecked(src_pixel_offset + 2);
-                    let a = *rgba_data.get_unchecked(src_pixel_offset + 3);
-
-                    *dest_ptr.add(dest_pixel_offset + 0) = b;
-                    *dest_ptr.add(dest_pixel_offset + 1) = g;
-                    *dest_ptr.add(dest_pixel_offset + 2) = r;
-                    *dest_ptr.add(dest_pixel_offset + 3) = a;
+                    let rgba = *src_u32.add(col);
+                    let r = (rgba >> 0) & 0xFF;
+                    let g = (rgba >> 8) & 0xFF;
+                    let b = (rgba >> 16) & 0xFF;
+                    let a = (rgba >> 24) & 0xFF;
+                    let bgra = (a << 24) | (r << 16) | (g << 8) | b;
+                    *dest_u32.add(col) = bgra;
                 }
             }
 
