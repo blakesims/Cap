@@ -347,7 +347,7 @@ pub struct RenderedFrame {
 impl RenderedFrame {
     pub fn y_plane(&self) -> &[u8] {
         match self.pixel_format {
-            PixelFormat::Rgba => &self.data,
+            PixelFormat::Rgba | PixelFormat::Yuv420p => &self.data,
             PixelFormat::Nv12 => {
                 let size = self.y_plane_size.unwrap_or(self.data.len());
                 &self.data[..size]
@@ -357,7 +357,7 @@ impl RenderedFrame {
 
     pub fn uv_plane(&self) -> Option<&[u8]> {
         match self.pixel_format {
-            PixelFormat::Rgba => None,
+            PixelFormat::Rgba | PixelFormat::Yuv420p => None,
             PixelFormat::Nv12 => {
                 let y_size = self.y_plane_size.unwrap_or(0);
                 Some(&self.data[y_size..])
