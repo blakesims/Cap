@@ -2308,6 +2308,17 @@ async fn get_display_frame_for_cropping(
 
     let rgba_data = match screen_frame.format() {
         PixelFormat::Rgba => screen_frame.data().to_vec(),
+        PixelFormat::Bgra => {
+            let bgra = screen_frame.data();
+            let mut rgba = vec![0u8; bgra.len()];
+            for (chunk_out, chunk_in) in rgba.chunks_exact_mut(4).zip(bgra.chunks_exact(4)) {
+                chunk_out[0] = chunk_in[2];
+                chunk_out[1] = chunk_in[1];
+                chunk_out[2] = chunk_in[0];
+                chunk_out[3] = chunk_in[3];
+            }
+            rgba
+        }
         PixelFormat::Nv12 => {
             let y_plane = screen_frame.y_plane().ok_or("Missing Y plane")?;
             let uv_plane = screen_frame.uv_plane().ok_or("Missing UV plane")?;
