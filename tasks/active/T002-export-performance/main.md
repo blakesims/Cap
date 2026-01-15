@@ -212,48 +212,104 @@ See [baseline-report.md](./baseline-report.md) for full analysis.
 - Already has partial infrastructure in `crates/frame-converter/src/videotoolbox.rs`
 - Is the proven, Apple-recommended approach
 
+#### Implementation Review Findings (Pre-Implementation)
+
+**Critical Gaps Identified:**
+
+1. **Interface Mismatch**: Export pipeline uses raw `&[u8]` bytes, but existing `VideoToolboxConverter` expects `ffmpeg::frame::Video`. Need new method accepting raw bytes.
+
+2. **RGBA Format Question**: CVPixelBuffer has `BGRA` (0x42475241) and `ARGB` (0x00000020) but no native RGBA. Must verify which constant works with RGBA byte order, or change renderer to output BGRA.
+
+3. **Stride Handling**: Current GPU readback removes padding (tightly packed). Must pass correct stride to `CVPixelBufferCreateWithBytes`.
+
+4. **Double Transfer Risk**: Architecture still involves GPU→CPU (RGBA) → CVPixelBuffer → VideoToolbox → CPU (NV12). May limit gains vs sws_scale.
+
+**Implementation Order:**
+
+| Phase | Task | Est. Time |
+|-------|------|-----------|
+| 1 | Format verification (test RGBA→NV12 in isolation) | 30 min |
+| 2 | Add `convert_raw_rgba_to_nv12()` method to VideoToolboxConverter | 1 hr |
+| 3 | Integrate into mp4.rs export pipeline | 45 min |
+| 4 | Testing & validation | 30 min |
+
 -   **Acceptance Criteria:**
     -   [ ] Add RGBA→NV12 support to existing `VTPixelTransferSession` wrapper
-    -   [ ] Replace `sws_scale` path with `VTPixelTransferSessionTransferImage`
-    -   [ ] Enable via `with_external_conversion(true)` flag
-    -   [ ] Verify output quality matches baseline
-    -   [ ] Achieve target: 50+ fps (up from 43 fps baseline)
+    -   [ ] New method: `convert_raw_rgba_to_nv12(&[u8], width, height, stride) -> Result<(Vec<u8>, Vec<u8>)>`
+    -   [ ] Replace sws_scale path in mp4.rs (lines 267-292)
+    -   [ ] Environment variable `CAP_VIDEOTOOLBOX_CONVERSION` (default: true)
+    -   [ ] Fallback to sws_scale if VideoToolbox init fails
+    -   [ ] Verify output quality matches baseline (no color issues)
+    -   [ ] Target: 50+ fps (up from 38.6 fps baseline)
 
 -   **Tasks/Subtasks:**
-    -   [ ] Review existing `crates/frame-converter/src/videotoolbox.rs` (already supports YUYV→NV12, UYVY→NV12)
-    -   [ ] Add `rgba_to_nv12()` method using existing patterns
-    -   [ ] Wrap RGBA frame data in `CVPixelBuffer` (source)
-    -   [ ] Create NV12 `CVPixelBuffer` for destination
-    -   [ ] Call `VTPixelTransferSessionTransferImage` for conversion
-    -   [ ] Integrate into `h264.rs` encoder setup (alternative to sws_scale path)
-    -   [ ] Add feature flag for easy A/B testing
 
--   **API Usage (from research):**
+    **Phase 1: Format Verification**
+    -   [ ] Test CVPixelBuffer with RGBA data using ARGB constant
+    -   [ ] Verify output correctness with test pattern
+    -   [ ] If RGBA doesn't work, determine if renderer can output BGRA
+
+    **Phase 2: VideoToolbox Interface**
+    -   [ ] Add `convert_raw_rgba_to_nv12()` method to `VideoToolboxConverter`
+    -   [ ] Implement `extract_nv12_planes()` helper (extract Y and UV from CVPixelBuffer)
+    -   [ ] Handle CVPixelBuffer lifecycle (create, use, release)
+    -   [ ] Match GPU converter interface: returns `(Vec<u8>, Vec<u8>)` for Y and UV planes
+
+    **Phase 3: Export Pipeline Integration**
+    -   [ ] Initialize `VideoToolboxConverter` in mp4.rs (around line 78)
+    -   [ ] Replace GPU converter call at lines 267-292
+    -   [ ] Add fallback handling (if VT fails, use sws_scale)
+    -   [ ] Add timing instrumentation (reuse S05 logging pattern)
+
+    **Phase 4: Validation**
+    -   [ ] Export test video, visual quality check
+    -   [ ] Compare export time to S05 baseline (target: 50+ fps)
+    -   [ ] Memory profiling for leaks
+
+-   **Key Code Locations:**
+
+    ```
+    crates/frame-converter/src/videotoolbox.rs
+    ├── pixel_to_cv_format() - Add RGBA mapping (line ~83)
+    ├── NEW: convert_raw_rgba_to_nv12() - Main conversion method
+    └── NEW: extract_nv12_planes() - Extract Y/UV from CVPixelBuffer
+
+    crates/export/src/mp4.rs
+    ├── Lines 78-92 - Replace GPU converter init with VideoToolbox
+    └── Lines 267-292 - Replace conversion call
+    ```
+
+-   **API Usage:**
     ```c
     VTPixelTransferSessionRef session;
     VTPixelTransferSessionCreate(kCFAllocatorDefault, &session);
 
     // Per frame:
-    CVPixelBufferRef destNV12;
-    CVPixelBufferCreate(..., kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, &destNV12);
-    VTPixelTransferSessionTransferImage(session, sourceRGBA, destNV12, NULL);
-    // destNV12 now contains converted frame - send to encoder
+    CVPixelBufferRef srcRGBA, dstNV12;
+    CVPixelBufferCreateWithBytes(..., rgbaData, stride, &srcRGBA);
+    CVPixelBufferCreate(..., kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, &dstNV12);
+    VTPixelTransferSessionTransferImage(session, srcRGBA, dstNV12);
+    // Extract Y and UV planes from dstNV12
+    CFRelease(srcRGBA); CFRelease(dstNV12);
 
     // Cleanup:
     VTPixelTransferSessionInvalidate(session);
     CFRelease(session);
     ```
 
--   **Key Files:**
-    - `crates/frame-converter/src/videotoolbox.rs` - Existing VT wrapper (extend)
-    - `crates/enc-ffmpeg/src/video/h264.rs:241-289` - Replace sws_scale call
-    - `crates/export/src/mp4.rs` - Integration point
+-   **Risk Assessment:**
 
--   **Why This Works (vs Custom WGSL):**
-    - Reuses existing VideoToolbox session (no new GPU context)
-    - No blocking operations needed
-    - No double readback - conversion happens in encoder path
-    - Apple-optimized for their hardware
+    | Risk | Severity | Mitigation |
+    |------|----------|------------|
+    | RGBA format incompatibility | HIGH | Test in Phase 1, fallback to BGRA |
+    | Performance below target | MEDIUM | Benchmark early, keep CPU fallback |
+    | Memory leaks | MEDIUM | RAII wrapper, profiling |
+    | Double transfer limits gains | MEDIUM | Accept ~45fps as realistic target |
+
+-   **Expected Outcomes:**
+    - Best case: 50+ fps (30% improvement)
+    - Realistic: 45-48 fps (17-24% improvement)
+    - Worst case: 40-43 fps (negligible, reassess approach)
 
 ---
 
