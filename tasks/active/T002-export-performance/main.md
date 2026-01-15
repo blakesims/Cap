@@ -471,9 +471,9 @@ The blocking architecture issue remains unsolved. Options:
 2. **Medium-term**: Use VideoToolbox `VTPixelTransferSession` (macOS native, Apple-optimized)
 3. **Long-term**: Integrate conversion into rendering pipeline BEFORE readback (ideal architecture)
 
-### Testing After Fix
+### Testing After Fix - VERIFIED (2026-01-15)
 
-Need to test with `CAP_GPU_FORMAT_CONVERSION=1`:
-1. Verify color corruption is fixed (no green tint)
-2. Performance will still be slow (blocking issue not fixed)
-3. If colors are correct, proceed to fix blocking architecture
+Color fix confirmed working on macOS:
+- ✅ Video output is correct (no green tint or artifacts)
+- ⚠️ Performance still degraded: 527.9s for 1667 frames (vs 39s without GPU conversion)
+- **Next step**: Fix blocking architecture to restore performance

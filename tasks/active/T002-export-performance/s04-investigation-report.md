@@ -392,14 +392,14 @@ Benefits of ideal:
 
 ## 8. Recommended Solution
 
-### 8.1 Short-term Fix (APPLIED)
+### 8.1 Short-term Fix (VERIFIED ✅)
 
-**Color corruption fix** - Completed 2026-01-15:
+**Color corruption fix** - Completed & Verified 2026-01-15:
 - Fixed byte packing in shader.wgsl using atomic operations
 - Updated Rust code to zero-initialize buffers and handle padding
 - GPU conversion remains disabled by default (`CAP_GPU_FORMAT_CONVERSION=0`)
-
-**Next step**: Test with `CAP_GPU_FORMAT_CONVERSION=1` to verify colors are correct
+- **VERIFIED**: Colors are correct, no green tint or artifacts
+- **ISSUE**: Performance still degraded (527.9s vs 39s baseline)
 
 ### 8.2 Medium-term Solution
 
@@ -429,12 +429,12 @@ Required changes:
 
 ### 8.4 Implementation Plan
 
-**Phase 1** (Completed): Fix color corruption
+**Phase 1** (VERIFIED ✅): Fix color corruption
 - [x] Fix shader byte packing
 - [x] Update Rust buffer handling
-- [ ] Verify on macOS with `CAP_GPU_FORMAT_CONVERSION=1`
+- [x] Verify on macOS with `CAP_GPU_FORMAT_CONVERSION=1` - Colors correct, performance degraded
 
-**Phase 2** (Pending): Address performance
+**Phase 2** (IN PROGRESS): Address performance
 - Option A: Try `spawn_blocking` wrapper (quick test)
 - Option B: Evaluate VideoToolbox path (medium effort)
 - Option C: Full pipeline integration (high effort, best result)
