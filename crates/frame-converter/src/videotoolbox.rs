@@ -112,7 +112,7 @@ pub struct VideoToolboxConverter {
 
 impl VideoToolboxConverter {
     pub fn new_rgba_to_nv12(width: u32, height: u32) -> Result<Self, ConvertError> {
-        let input_cv_format = K_CV_PIXEL_FORMAT_TYPE_32_RGBA;
+        let input_cv_format = K_CV_PIXEL_FORMAT_TYPE_32_BGRA;
         let output_cv_format = K_CV_PIXEL_FORMAT_TYPE_420_YP_CB_CR8_BI_PLANAR_VIDEO_RANGE;
 
         let mut session: VTPixelTransferSessionRef = ptr::null_mut();
@@ -131,7 +131,7 @@ impl VideoToolboxConverter {
         }
 
         tracing::debug!(
-            "[T002-S06] VideoToolbox converter initialized: RGBA {}x{} -> NV12",
+            "[T002-S06] VideoToolbox converter initialized: RGBA (as BGRA) {}x{} -> NV12",
             width,
             height
         );
@@ -385,7 +385,7 @@ impl VideoToolboxConverter {
 
         if count == 0 {
             tracing::info!(
-                "[T002-S06] VideoToolbox converter first frame: RGBA {}x{} -> NV12",
+                "[T002-S06] VideoToolbox converter first frame: RGBA {}x{} -> NV12 (using BGRA with channel swap)",
                 width,
                 height
             );
@@ -398,7 +398,7 @@ impl VideoToolboxConverter {
                 ptr::null(),
                 width as usize,
                 height as usize,
-                K_CV_PIXEL_FORMAT_TYPE_32_RGBA,
+                K_CV_PIXEL_FORMAT_TYPE_32_BGRA,
                 ptr::null(),
                 &mut pixel_buffer,
             )
@@ -406,7 +406,7 @@ impl VideoToolboxConverter {
 
         if status != K_CV_RETURN_SUCCESS {
             return Err(ConvertError::ConversionFailed(format!(
-                "CVPixelBufferCreate for RGBA failed: {status}"
+                "CVPixelBufferCreate for BGRA failed: {status}"
             )));
         }
 
@@ -422,13 +422,24 @@ impl VideoToolboxConverter {
             let dest_ptr = CVPixelBufferGetBaseAddress(pixel_buffer);
             let dest_stride = CVPixelBufferGetBytesPerRow(pixel_buffer);
 
-            let src_row_bytes = (width as usize) * 4;
             for row in 0..(height as usize) {
                 let src_offset = row * stride;
                 let dest_offset = row * dest_stride;
-                let src_row = rgba_data.as_ptr().add(src_offset);
-                let dest_row = dest_ptr.add(dest_offset);
-                ptr::copy_nonoverlapping(src_row, dest_row, src_row_bytes);
+
+                for col in 0..(width as usize) {
+                    let src_pixel_offset = src_offset + col * 4;
+                    let dest_pixel_offset = dest_offset + col * 4;
+
+                    let r = *rgba_data.get_unchecked(src_pixel_offset + 0);
+                    let g = *rgba_data.get_unchecked(src_pixel_offset + 1);
+                    let b = *rgba_data.get_unchecked(src_pixel_offset + 2);
+                    let a = *rgba_data.get_unchecked(src_pixel_offset + 3);
+
+                    *dest_ptr.add(dest_pixel_offset + 0) = b;
+                    *dest_ptr.add(dest_pixel_offset + 1) = g;
+                    *dest_ptr.add(dest_pixel_offset + 2) = r;
+                    *dest_ptr.add(dest_pixel_offset + 3) = a;
+                }
             }
 
             CVPixelBufferUnlockBaseAddress(pixel_buffer, 0);
