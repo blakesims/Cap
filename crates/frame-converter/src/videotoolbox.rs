@@ -393,18 +393,12 @@ impl VideoToolboxConverter {
 
         let mut pixel_buffer: CVPixelBufferRef = ptr::null_mut();
 
-        let base_address = rgba_data.as_ptr() as *mut c_void;
-
         let status = unsafe {
-            CVPixelBufferCreateWithBytes(
+            CVPixelBufferCreate(
                 ptr::null(),
                 width as usize,
                 height as usize,
                 K_CV_PIXEL_FORMAT_TYPE_32_RGBA,
-                base_address,
-                stride,
-                ptr::null(),
-                ptr::null(),
                 ptr::null(),
                 &mut pixel_buffer,
             )
@@ -412,8 +406,32 @@ impl VideoToolboxConverter {
 
         if status != K_CV_RETURN_SUCCESS {
             return Err(ConvertError::ConversionFailed(format!(
-                "CVPixelBufferCreateWithBytes failed: {status}"
+                "CVPixelBufferCreate for RGBA failed: {status}"
             )));
+        }
+
+        unsafe {
+            let lock_status = CVPixelBufferLockBaseAddress(pixel_buffer, 0);
+            if lock_status != K_CV_RETURN_SUCCESS {
+                CVPixelBufferRelease(pixel_buffer);
+                return Err(ConvertError::ConversionFailed(format!(
+                    "CVPixelBufferLockBaseAddress failed: {lock_status}"
+                )));
+            }
+
+            let dest_ptr = CVPixelBufferGetBaseAddress(pixel_buffer);
+            let dest_stride = CVPixelBufferGetBytesPerRow(pixel_buffer);
+
+            let src_row_bytes = (width as usize) * 4;
+            for row in 0..(height as usize) {
+                let src_offset = row * stride;
+                let dest_offset = row * dest_stride;
+                let src_row = rgba_data.as_ptr().add(src_offset);
+                let dest_row = dest_ptr.add(dest_offset);
+                ptr::copy_nonoverlapping(src_row, dest_row, src_row_bytes);
+            }
+
+            CVPixelBufferUnlockBaseAddress(pixel_buffer, 0);
         }
 
         let output_buffer = self.create_output_pixel_buffer()?;
