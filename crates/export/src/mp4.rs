@@ -1,6 +1,7 @@
 use crate::{ExporterBase, buffer_config::ExportBufferConfig};
 use cap_editor::{AudioRenderer, get_audio_segments};
 use cap_enc_ffmpeg::{AudioEncoder, aac::AACEncoder, h264::H264Encoder, mp4::*};
+use cap_gpu_converters::RGBAToNV12;
 use cap_media_info::{RawVideoFormat, VideoInfo};
 use cap_project::XY;
 use cap_rendering::{ProjectUniforms, RenderSegment, RenderedFrame};
@@ -10,32 +11,6 @@ use serde::Deserialize;
 use specta::Type;
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use tracing::{debug, info, trace, warn};
-
-#[cfg(target_os = "macos")]
-use cap_frame_converter::VideoToolboxConverter;
-
-#[cfg(not(target_os = "macos"))]
-struct VideoToolboxConverter;
-
-#[cfg(not(target_os = "macos"))]
-#[derive(Debug, Clone, thiserror::Error)]
-enum StubConvertError {
-    #[error("VideoToolbox not available on this platform")]
-    NotAvailable,
-}
-
-#[cfg(not(target_os = "macos"))]
-impl VideoToolboxConverter {
-    fn convert_raw_rgba_to_nv12(
-        &self,
-        _rgba_data: &[u8],
-        _width: u32,
-        _height: u32,
-        _stride: usize,
-    ) -> Result<(Vec<u8>, Vec<u8>), StubConvertError> {
-        Err(StubConvertError::NotAvailable)
-    }
-}
 
 #[derive(Deserialize, Type, Clone, Copy, Debug)]
 pub enum ExportCompression {
@@ -73,16 +48,10 @@ impl Mp4ExportSettings {
     }
 }
 
-#[cfg(target_os = "macos")]
-fn videotoolbox_conversion_enabled() -> bool {
-    std::env::var("CAP_VIDEOTOOLBOX_CONVERSION")
-        .map(|v| v != "0" && v.to_lowercase() != "false")
-        .unwrap_or(true)
-}
-
-#[cfg(not(target_os = "macos"))]
-fn videotoolbox_conversion_enabled() -> bool {
-    false
+fn gpu_conversion_enabled() -> bool {
+    std::env::var("CAP_GPU_FORMAT_CONVERSION")
+        .map(|v| v == "1" || v.to_lowercase() == "true")
+        .unwrap_or(false)
 }
 
 impl Mp4ExportSettings {
@@ -103,41 +72,37 @@ impl Mp4ExportSettings {
             frames = expected_frames,
             fps = self.fps,
             resolution = %format!("{}x{}", self.resolution_base.x, self.resolution_base.y),
-            "[T002-S06] Export started"
+            "[T002-S05] Export started"
         );
+
+        let rgba_to_nv12: Option<Arc<RGBAToNV12>> = if gpu_conversion_enabled() {
+            match RGBAToNV12::new().await {
+                Ok(converter) => {
+                    info!("GPU RGBA→NV12 converter initialized - using GPU format conversion");
+                    Some(Arc::new(converter))
+                }
+                Err(e) => {
+                    warn!(error = %e, "GPU converter initialization failed - falling back to CPU conversion");
+                    None
+                }
+            }
+        } else {
+            debug!("GPU format conversion disabled via CAP_GPU_FORMAT_CONVERSION");
+            None
+        };
+
+        let use_nv12 = rgba_to_nv12.is_some();
+
+        let (tx_image_data, mut video_rx) = tokio::sync::mpsc::channel::<(RenderedFrame, u32)>(buffer_config.rendered_frame_buffer);
+        let (frame_tx, frame_rx) = std::sync::mpsc::sync_channel::<MP4Input>(buffer_config.encoder_input_buffer);
+
+        let fps = self.fps;
 
         let output_size = ProjectUniforms::get_output_size(
             &base.render_constants.options,
             &base.project_config,
             self.resolution_base,
         );
-
-        #[cfg(target_os = "macos")]
-        let converter: Option<Arc<VideoToolboxConverter>> = if videotoolbox_conversion_enabled() {
-            match VideoToolboxConverter::new_rgba_to_nv12(output_size.0, output_size.1) {
-                Ok(converter) => {
-                    info!("[T002-S06] VideoToolbox RGBA→NV12 converter initialized - using hardware acceleration");
-                    Some(Arc::new(converter))
-                }
-                Err(e) => {
-                    warn!(error = %e, "[T002-S06] VideoToolbox initialization failed - falling back to CPU conversion");
-                    None
-                }
-            }
-        } else {
-            debug!("[T002-S06] VideoToolbox conversion disabled via CAP_VIDEOTOOLBOX_CONVERSION");
-            None
-        };
-
-        #[cfg(not(target_os = "macos"))]
-        let converter: Option<Arc<VideoToolboxConverter>> = None;
-
-        let use_nv12 = converter.is_some();
-
-        let (tx_image_data, mut video_rx) = tokio::sync::mpsc::channel::<(RenderedFrame, u32)>(buffer_config.rendered_frame_buffer);
-        let (frame_tx, frame_rx) = std::sync::mpsc::sync_channel::<MP4Input>(buffer_config.encoder_input_buffer);
-
-        let fps = self.fps;
 
         let video_format = if use_nv12 {
             RawVideoFormat::Nv12
@@ -208,7 +173,7 @@ impl Mp4ExportSettings {
         let render_task = tokio::spawn({
             let project = base.project_config.clone();
             let project_path = base.project_path.clone();
-            let converter = converter;
+            let converter = rgba_to_nv12;
             async move {
                 let mut frame_count = 0;
                 let mut first_frame = None;
@@ -299,12 +264,7 @@ impl Mp4ExportSettings {
                             .copied()
                             .collect();
 
-                        match conv.convert_raw_rgba_to_nv12(
-                            &rgba_data,
-                            frame.width,
-                            frame.height,
-                            frame.width as usize * 4,
-                        ) {
+                        match conv.convert(&rgba_data, frame.width, frame.height) {
                             Ok((y_plane, uv_plane)) => {
                                 if !conversion_logged {
                                     debug!(
@@ -312,7 +272,7 @@ impl Mp4ExportSettings {
                                         height = frame.height,
                                         y_size = y_plane.len(),
                                         uv_size = uv_plane.len(),
-                                        "[T002-S06] VideoToolbox RGBA→NV12 conversion active"
+                                        "GPU RGBA→NV12 conversion active"
                                     );
                                     conversion_logged = true;
                                 }
@@ -325,9 +285,9 @@ impl Mp4ExportSettings {
                                 warn!(
                                     error = %e,
                                     frame_number = frame_number,
-                                    "[T002-S06] VideoToolbox conversion failed for frame"
+                                    "GPU conversion failed for frame, using error frame"
                                 );
-                                return Err(format!("[T002-S06] VideoToolbox conversion failed: {e}"));
+                                return Err(format!("GPU conversion failed: {e}"));
                             }
                         }
                     } else {
