@@ -148,19 +148,24 @@ impl RGBAToNV12 {
         let y_plane_size = width_u64 * height_u64;
         let uv_plane_size = (width_u64 * height_u64) / 2;
 
-        let y_write_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("RGBA to NV12 Y Plane Buffer"),
-            size: y_plane_size,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-            mapped_at_creation: false,
-        });
+        let y_buffer_size = (y_plane_size + 3) / 4 * 4;
+        let uv_buffer_size = (uv_plane_size + 3) / 4 * 4;
 
-        let uv_write_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("RGBA to NV12 UV Plane Buffer"),
-            size: uv_plane_size,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-            mapped_at_creation: false,
-        });
+        let y_write_buffer = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("RGBA to NV12 Y Plane Buffer"),
+                contents: &vec![0u8; y_buffer_size as usize],
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            });
+
+        let uv_write_buffer = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("RGBA to NV12 UV Plane Buffer"),
+                contents: &vec![0u8; uv_buffer_size as usize],
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            });
 
         let dimensions_buffer = self
             .device
@@ -219,32 +224,31 @@ impl RGBAToNV12 {
 
         let y_read_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("RGBA to NV12 Y Read Buffer"),
-            size: y_write_buffer.size(),
+            size: y_buffer_size,
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
             mapped_at_creation: false,
         });
 
         let uv_read_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("RGBA to NV12 UV Read Buffer"),
-            size: uv_write_buffer.size(),
+            size: uv_buffer_size,
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
             mapped_at_creation: false,
         });
 
-        encoder.copy_buffer_to_buffer(&y_write_buffer, 0, &y_read_buffer, 0, y_write_buffer.size());
-        encoder.copy_buffer_to_buffer(
-            &uv_write_buffer,
-            0,
-            &uv_read_buffer,
-            0,
-            uv_write_buffer.size(),
-        );
+        encoder.copy_buffer_to_buffer(&y_write_buffer, 0, &y_read_buffer, 0, y_buffer_size);
+        encoder.copy_buffer_to_buffer(&uv_write_buffer, 0, &uv_read_buffer, 0, uv_buffer_size);
 
         let _submission = self.queue.submit(std::iter::once(encoder.finish()));
 
-        Ok((
-            read_buffer_to_vec(&y_read_buffer, &self.device).map_err(ConvertError::Poll)?,
-            read_buffer_to_vec(&uv_read_buffer, &self.device).map_err(ConvertError::Poll)?,
-        ))
+        let mut y_data =
+            read_buffer_to_vec(&y_read_buffer, &self.device).map_err(ConvertError::Poll)?;
+        let mut uv_data =
+            read_buffer_to_vec(&uv_read_buffer, &self.device).map_err(ConvertError::Poll)?;
+
+        y_data.truncate(y_plane_size as usize);
+        uv_data.truncate(uv_plane_size as usize);
+
+        Ok((y_data, uv_data))
     }
 }

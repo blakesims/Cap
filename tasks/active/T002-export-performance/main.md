@@ -409,3 +409,71 @@ Full integration would move GPU conversion BEFORE readback:
 - Export video and check for NV12 conversion log messages
 - Verify output quality matches pre-S04 output
 - Measure performance improvement in S05
+
+## 13. S04 Issues and Fixes (2026-01-15)
+
+### Critical Issues Discovered
+
+Testing revealed two critical issues with S04:
+
+1. **13x Performance Regression** (39s → 529s for same export)
+   - Root cause: Blocking GPU operations (`device.poll(Wait)`) inside async task
+   - Creates separate GPU context instead of sharing with renderer
+   - Serializes all frame processing, defeating pipelining
+
+2. **Video Corruption** (Green color filter, artifacts)
+   - Root cause: WGSL shader using `array<u32>` but treating indices as byte offsets
+   - Each `y_plane[idx] = value` wrote 4 bytes instead of 1 byte
+   - Memory layout completely wrong, causing color corruption
+
+### Immediate Fix Applied
+
+Disabled GPU conversion by default until fixes are verified:
+```rust
+fn gpu_conversion_enabled() -> bool {
+    std::env::var("CAP_GPU_FORMAT_CONVERSION")
+        .map(|v| v == "1" || v.to_lowercase() == "true")
+        .unwrap_or(false)  // Changed from true to false
+}
+```
+
+### Shader Fix (2026-01-15)
+
+Fixed byte packing in `shader.wgsl`:
+
+**Before (BROKEN)**:
+```wgsl
+@group(0) @binding(1) var<storage, read_write> y_plane: array<u32>;
+let y_idx = pos.y * dims.x + pos.x;
+y_plane[y_idx] = y_value;  // Writes 4 bytes per pixel!
+```
+
+**After (FIXED)**:
+```wgsl
+@group(0) @binding(1) var<storage, read_write> y_plane: array<atomic<u32>>;
+let y_linear = pos.y * dims.x + pos.x;
+let y_word_idx = y_linear / 4u;
+let y_byte_pos = y_linear % 4u;
+let y_shifted = y_value << (y_byte_pos * 8u);
+atomicOr(&y_plane[y_word_idx], y_shifted);  // Packs 4 bytes into each u32
+```
+
+Also updated Rust code to:
+- Zero-initialize buffers (required for atomicOr)
+- Pad buffer sizes to u32 boundaries
+- Truncate output to exact NV12 sizes
+
+### Remaining Performance Issue
+
+The blocking architecture issue remains unsolved. Options:
+
+1. **Short-term**: Use `spawn_blocking` wrapper (simple, may not fully fix)
+2. **Medium-term**: Use VideoToolbox `VTPixelTransferSession` (macOS native, Apple-optimized)
+3. **Long-term**: Integrate conversion into rendering pipeline BEFORE readback (ideal architecture)
+
+### Testing After Fix
+
+Need to test with `CAP_GPU_FORMAT_CONVERSION=1`:
+1. Verify color corruption is fixed (no green tint)
+2. Performance will still be slow (blocking issue not fixed)
+3. If colors are correct, proceed to fix blocking architecture

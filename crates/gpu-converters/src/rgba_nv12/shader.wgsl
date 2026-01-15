@@ -1,6 +1,6 @@
 @group(0) @binding(0) var rgba_input: texture_2d<f32>;
-@group(0) @binding(1) var<storage, read_write> y_plane: array<u32>;
-@group(0) @binding(2) var<storage, read_write> uv_plane: array<u32>;
+@group(0) @binding(1) var<storage, read_write> y_plane: array<atomic<u32>>;
+@group(0) @binding(2) var<storage, read_write> uv_plane: array<atomic<u32>>;
 @group(0) @binding(3) var<uniform> dimensions: vec2<u32>;
 
 fn rgb_to_y(r: f32, g: f32, b: f32) -> u32 {
@@ -29,13 +29,13 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
 
     let rgba = textureLoad(rgba_input, pos, 0);
-    let r = rgba.r;
-    let g = rgba.g;
-    let b = rgba.b;
+    let y_value = rgb_to_y(rgba.r, rgba.g, rgba.b);
 
-    let y_value = rgb_to_y(r, g, b);
-    let y_idx = pos.y * dims.x + pos.x;
-    y_plane[y_idx] = y_value;
+    let y_linear = pos.y * dims.x + pos.x;
+    let y_word_idx = y_linear / 4u;
+    let y_byte_pos = y_linear % 4u;
+    let y_shifted = y_value << (y_byte_pos * 8u);
+    atomicOr(&y_plane[y_word_idx], y_shifted);
 
     if (pos.x % 2u == 0u && pos.y % 2u == 0u) {
         let rgba00 = textureLoad(rgba_input, pos, 0);
@@ -51,8 +51,17 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         let v_value = rgb_to_v(avg_r, avg_g, avg_b);
 
         let uv_row = pos.y / 2u;
-        let uv_base = uv_row * dims.x + pos.x;
-        uv_plane[uv_base] = u_value;
-        uv_plane[uv_base + 1u] = v_value;
+        let uv_linear = uv_row * dims.x + pos.x;
+        let uv_word_idx = uv_linear / 4u;
+        let uv_byte_pos = uv_linear % 4u;
+
+        let u_shifted = u_value << (uv_byte_pos * 8u);
+        if (uv_byte_pos < 3u) {
+            let v_shifted = v_value << ((uv_byte_pos + 1u) * 8u);
+            atomicOr(&uv_plane[uv_word_idx], u_shifted | v_shifted);
+        } else {
+            atomicOr(&uv_plane[uv_word_idx], u_shifted);
+            atomicOr(&uv_plane[uv_word_idx + 1u], v_value);
+        }
     }
 }
