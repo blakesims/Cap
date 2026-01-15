@@ -134,7 +134,6 @@ impl Mp4ExportSettings {
         let render_task = tokio::spawn({
             let project = base.project_config.clone();
             let project_path = base.project_path.clone();
-            let send_timeout = buffer_config.send_timeout;
             async move {
                 let mut frame_count = 0;
                 let mut first_frame = None;
@@ -225,15 +224,9 @@ impl Mp4ExportSettings {
                         ),
                     };
 
-                    match frame_tx.send_timeout(mp4_input, send_timeout) {
-                        Ok(()) => {}
-                        Err(std::sync::mpsc::SendTimeoutError::Timeout(_)) => {
-                            return Err("Export stalled - encoder not consuming frames".to_string());
-                        }
-                        Err(std::sync::mpsc::SendTimeoutError::Disconnected(_)) => {
-                            warn!("Renderer task sender dropped. Exiting");
-                            return Ok(());
-                        }
+                    if frame_tx.send(mp4_input).is_err() {
+                        warn!("Encoder channel closed. Exiting render task");
+                        return Ok(());
                     }
 
                     frame_count += 1;

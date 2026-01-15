@@ -1,10 +1,8 @@
-use std::time::Duration;
 use sysinfo::System;
 
 pub struct ExportBufferConfig {
     pub rendered_frame_buffer: usize,
     pub encoder_input_buffer: usize,
-    pub send_timeout: Duration,
 }
 
 impl ExportBufferConfig {
@@ -48,7 +46,6 @@ impl ExportBufferConfig {
         Self {
             rendered_frame_buffer: rendered,
             encoder_input_buffer: encoder,
-            send_timeout: Duration::from_secs(5),
         }
     }
 }
