@@ -34,7 +34,7 @@ struct ProcessedFrame {
 impl ProcessedFrame {
     fn to_decoded_frame(&self) -> DecodedFrame {
         match self.format {
-            PixelFormat::Rgba => {
+            PixelFormat::Rgba | PixelFormat::Bgra => {
                 DecodedFrame::new_with_arc(Arc::clone(&self.data), self.width, self.height)
             }
             PixelFormat::Nv12 => DecodedFrame::new_nv12_with_arc(

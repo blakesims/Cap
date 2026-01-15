@@ -107,7 +107,7 @@ impl Mp4ExportSettings {
         let video_format = if use_nv12 {
             RawVideoFormat::Nv12
         } else {
-            RawVideoFormat::Rgba
+            RawVideoFormat::Bgra
         };
         let mut video_info = VideoInfo::from_raw(video_format, output_size.0, output_size.1, fps);
         video_info.time_base = ffmpeg::Rational::new(1, fps as i32);
@@ -325,7 +325,7 @@ impl Mp4ExportSettings {
                                 .flat_map(|row| {
                                     row[0..(frame.width * 4) as usize]
                                         .chunks(4)
-                                        .flat_map(|chunk| [chunk[0], chunk[1], chunk[2]])
+                                        .flat_map(|bgra| [bgra[2], bgra[1], bgra[0]])
                                 })
                                 .collect::<Vec<_>>(),
                         );

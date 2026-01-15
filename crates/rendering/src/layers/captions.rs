@@ -265,7 +265,7 @@ impl CaptionsLayer {
         let swash_cache = SwashCache::new();
         let cache = Cache::new(device);
         let viewport = Viewport::new(device, &cache);
-        let mut text_atlas = TextAtlas::new(device, queue, &cache, wgpu::TextureFormat::Rgba8Unorm);
+        let mut text_atlas = TextAtlas::new(device, queue, &cache, wgpu::TextureFormat::Bgra8Unorm);
         let text_renderer = TextRenderer::new(
             &mut text_atlas,
             device,
@@ -338,7 +338,7 @@ impl CaptionsLayer {
                 module: &background_shader,
                 entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    format: wgpu::TextureFormat::Bgra8Unorm,
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],

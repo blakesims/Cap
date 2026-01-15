@@ -138,6 +138,7 @@ impl SendableD3D11Texture {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PixelFormat {
     Rgba,
+    Bgra,
     Nv12,
     Yuv420p,
 }
@@ -375,7 +376,7 @@ impl DecodedFrame {
                     .and_then(|v| usize::try_from(v).ok())?;
                 self.data.get(..y_size)
             }
-            PixelFormat::Rgba => None,
+            PixelFormat::Rgba | PixelFormat::Bgra => None,
         }
     }
 
@@ -388,7 +389,7 @@ impl DecodedFrame {
                     .and_then(|v| usize::try_from(v).ok())?;
                 self.data.get(y_size..)
             }
-            PixelFormat::Yuv420p | PixelFormat::Rgba => None,
+            PixelFormat::Yuv420p | PixelFormat::Rgba | PixelFormat::Bgra => None,
         }
     }
 

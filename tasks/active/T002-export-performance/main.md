@@ -201,115 +201,103 @@ See [baseline-report.md](./baseline-report.md) for full analysis.
 
 ---
 
-### S06 - Implement VTPixelTransferSession for RGBA→NV12 🆕 **PRIMARY**
-**Complexity: Medium (~2-3h)** | **Status: NEXT** | **Priority: HIGHEST**
+### S06 - Let Encoder Accept BGRA Directly 🆕 **PRIMARY**
+**Complexity: Low (~1h)** | **Status: NEXT** | **Priority: HIGHEST**
 
-**Background:** Implementation review confirmed this is the actual optimization. The encoder already accepts BGRA but uses CPU-based `sws_scale` internally. VTPixelTransferSession replaces `sws_scale` with Apple's hardware-accelerated converter.
+#### Previous Attempt (FAILED)
 
-**Rationale:** Apple's `VTPixelTransferSession` is a hardware-accelerated format converter that:
-- Runs on GPU/Apple Neural Engine
-- Supports zero-copy with proper CVPixelBuffer management
-- Already has partial infrastructure in `crates/frame-converter/src/videotoolbox.rs`
-- Is the proven, Apple-recommended approach
+Our first S06 implementation added VTPixelTransferSession as a **pre-processing step** in mp4.rs, which **added overhead** instead of removing it:
+```
+GPU → Readback (RGBA) → CPU swap → CVPixelBuffer copy → VTPixelTransfer → Extract planes → Encoder
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                        ALL OF THIS WAS ADDED OVERHEAD (multiple extra copies)
+```
 
-#### Implementation Review Findings (Pre-Implementation)
+This was slower than baseline because we added 3+ data copies that sws_scale doesn't need.
 
-**Critical Gaps Identified:**
+#### Correct Approach (from research-questions-export-optimization.md)
 
-1. **Interface Mismatch**: Export pipeline uses raw `&[u8]` bytes, but existing `VideoToolboxConverter` expects `ffmpeg::frame::Video`. Need new method accepting raw bytes.
+The research document Q4.2 ranked recommendations:
 
-2. **RGBA Format Question**: CVPixelBuffer has `BGRA` (0x42475241) and `ARGB` (0x00000020) but no native RGBA. Must verify which constant works with RGBA byte order, or change renderer to output BGRA.
+> **#1 (HIGHEST PRIORITY): Let encoder handle conversion (use BGRA input)**
+> - Effort: Very low (modify FFmpeg settings)
+> - Risk: Minimal
+> - "If VideoToolbox accepts BGRA, we simply feed the CVPixelBuffer as BGRA. No conversion step needed."
 
-3. **Stride Handling**: Current GPU readback removes padding (tightly packed). Must pass correct stride to `CVPixelBufferCreateWithBytes`.
+The key insight: **VideoToolbox encoder CAN accept BGRA directly** and will do internal hardware-accelerated conversion. We don't need to convert ourselves at all!
 
-4. **Double Transfer Risk**: Architecture still involves GPU→CPU (RGBA) → CVPixelBuffer → VideoToolbox → CPU (NV12). May limit gains vs sws_scale.
+#### Target Architecture
 
-**Implementation Order:**
+```
+Current (baseline):
+GPU Render (RGBA) → Readback (RGBA) → sws_scale CPU (RGBA→NV12) → Encoder (NV12)
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^
+                                      64.8% of export time
 
-| Phase | Task | Est. Time |
-|-------|------|-----------|
-| 1 | Format verification (test RGBA→NV12 in isolation) | 30 min |
-| 2 | Add `convert_raw_rgba_to_nv12()` method to VideoToolboxConverter | 1 hr |
-| 3 | Integrate into mp4.rs export pipeline | 45 min |
-| 4 | Testing & validation | 30 min |
+Target:
+GPU Render (RGBA) → Readback (RGBA) → Encoder accepts RGBA/BGRA directly (internal HW conversion)
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                      VideoToolbox handles this internally, hardware accelerated
+```
+
+#### Implementation Plan
+
+**Option A: Configure FFmpeg to accept BGRA (TRY FIRST)**
+1. Check if `h264_videotoolbox` can accept BGRA/RGBA pixel format
+2. Set `with_external_conversion(false)` so encoder handles conversion internally
+3. Pass RGBA frames directly to encoder without manual conversion
+
+**Option B: Replace sws_scale IN h264.rs with VTPixelTransferSession (FALLBACK)**
+If Option A doesn't work, replace the sws_scale call **inside the encoder** (h264.rs:241-289), not as a separate pre-processing step.
 
 -   **Acceptance Criteria:**
-    -   [ ] Add RGBA→NV12 support to existing `VTPixelTransferSession` wrapper
-    -   [ ] New method: `convert_raw_rgba_to_nv12(&[u8], width, height, stride) -> Result<(Vec<u8>, Vec<u8>)>`
-    -   [ ] Replace sws_scale path in mp4.rs (lines 267-292)
-    -   [ ] Environment variable `CAP_VIDEOTOOLBOX_CONVERSION` (default: true)
-    -   [ ] Fallback to sws_scale if VideoToolbox init fails
-    -   [ ] Verify output quality matches baseline (no color issues)
+    -   [ ] Encoder accepts RGBA/BGRA input directly (no manual conversion in mp4.rs)
+    -   [ ] sws_scale is bypassed or replaced with hardware conversion
+    -   [ ] No extra data copies compared to baseline
     -   [ ] Target: 50+ fps (up from 38.6 fps baseline)
+    -   [ ] Output quality matches baseline
 
 -   **Tasks/Subtasks:**
 
-    **Phase 1: Format Verification**
-    -   [ ] Test CVPixelBuffer with RGBA data using ARGB constant
-    -   [ ] Verify output correctness with test pattern
-    -   [ ] If RGBA doesn't work, determine if renderer can output BGRA
+    **Option A: BGRA Direct Input (IMPLEMENTED)**
+    -   [x] Changed GPU rendering output format from Rgba8Unorm to Bgra8Unorm
+    -   [x] Updated all layer pipeline targets to match (background, blur, cursor, mask, captions, text)
+    -   [x] Changed RenderedFrame pixel_format from Rgba to Bgra
+    -   [x] Updated export pipeline to report RawVideoFormat::Bgra
+    -   [x] Updated screenshot/image saving code to swap B↔R channels
+    -   [x] Updated GIF encoder to handle BGRA input
+    -   [ ] Test and verify h264_videotoolbox accepts BGRA directly
+    -   [ ] Measure performance improvement
 
-    **Phase 2: VideoToolbox Interface**
-    -   [ ] Add `convert_raw_rgba_to_nv12()` method to `VideoToolboxConverter`
-    -   [ ] Implement `extract_nv12_planes()` helper (extract Y and UV from CVPixelBuffer)
-    -   [ ] Handle CVPixelBuffer lifecycle (create, use, release)
-    -   [ ] Match GPU converter interface: returns `(Vec<u8>, Vec<u8>)` for Y and UV planes
-
-    **Phase 3: Export Pipeline Integration**
-    -   [ ] Initialize `VideoToolboxConverter` in mp4.rs (around line 78)
-    -   [ ] Replace GPU converter call at lines 267-292
-    -   [ ] Add fallback handling (if VT fails, use sws_scale)
-    -   [ ] Add timing instrumentation (reuse S05 logging pattern)
-
-    **Phase 4: Validation**
-    -   [ ] Export test video, visual quality check
-    -   [ ] Compare export time to S05 baseline (target: 50+ fps)
-    -   [ ] Memory profiling for leaks
+    **Option B: Replace sws_scale in h264.rs (if Option A fails)**
+    -   [ ] Identify exact location of sws_scale call in h264.rs (lines 241-289)
+    -   [ ] Replace with VTPixelTransferSession call **at that location**
+    -   [ ] Ensure no extra copies - convert in-place in encoder path
+    -   [ ] Test and measure
 
 -   **Key Code Locations:**
-
     ```
-    crates/frame-converter/src/videotoolbox.rs
-    ├── pixel_to_cv_format() - Add RGBA mapping (line ~83)
-    ├── NEW: convert_raw_rgba_to_nv12() - Main conversion method
-    └── NEW: extract_nv12_planes() - Extract Y/UV from CVPixelBuffer
-
-    crates/export/src/mp4.rs
-    ├── Lines 78-92 - Replace GPU converter init with VideoToolbox
-    └── Lines 267-292 - Replace conversion call
+    crates/enc-ffmpeg/src/video/h264.rs
+    ├── Lines 241-289 - sws_scale conversion (THIS is what we want to eliminate/replace)
+    ├── with_external_conversion() flag - controls whether encoder expects pre-converted input
+    └── H264EncoderBuilder - encoder configuration
     ```
 
--   **API Usage:**
-    ```c
-    VTPixelTransferSessionRef session;
-    VTPixelTransferSessionCreate(kCFAllocatorDefault, &session);
+-   **Key Research References:**
+    From `research-questions-export-optimization.md`:
+    - Q2.2: "VideoToolbox's H.264 encoder on macOS can take BGRA buffers"
+    - Q2.2: "FFmpeg's h264_videotoolbox encoder exposes the ability to set the input CVPixelBuffer format. You can specify `-pix_fmt bgra`"
+    - Q4.2: "We should try enabling `H264EncoderBuilder::with_external_conversion(false)`"
 
-    // Per frame:
-    CVPixelBufferRef srcRGBA, dstNV12;
-    CVPixelBufferCreateWithBytes(..., rgbaData, stride, &srcRGBA);
-    CVPixelBufferCreate(..., kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, &dstNV12);
-    VTPixelTransferSessionTransferImage(session, srcRGBA, dstNV12);
-    // Extract Y and UV planes from dstNV12
-    CFRelease(srcRGBA); CFRelease(dstNV12);
-
-    // Cleanup:
-    VTPixelTransferSessionInvalidate(session);
-    CFRelease(session);
-    ```
-
--   **Risk Assessment:**
-
-    | Risk | Severity | Mitigation |
-    |------|----------|------------|
-    | RGBA format incompatibility | HIGH | Test in Phase 1, fallback to BGRA |
-    | Performance below target | MEDIUM | Benchmark early, keep CPU fallback |
-    | Memory leaks | MEDIUM | RAII wrapper, profiling |
-    | Double transfer limits gains | MEDIUM | Accept ~45fps as realistic target |
+-   **Why This Works:**
+    - No extra data copies (encoder handles conversion internally)
+    - VideoToolbox does hardware-accelerated BGRA→NV12 conversion
+    - Simplest possible change - just configure encoder differently
 
 -   **Expected Outcomes:**
-    - Best case: 50+ fps (30% improvement)
-    - Realistic: 45-48 fps (17-24% improvement)
-    - Worst case: 40-43 fps (negligible, reassess approach)
+    - Best case: 50-55 fps (30-40% improvement)
+    - Realistic: 45-50 fps (17-30% improvement)
+    - Worst case: Option A doesn't work, fall back to Option B
 
 ---
 

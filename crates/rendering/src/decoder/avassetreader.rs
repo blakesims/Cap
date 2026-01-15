@@ -44,7 +44,7 @@ impl ProcessedFrame {
         } = &self.frame_data;
 
         match self.format {
-            PixelFormat::Rgba => {
+            PixelFormat::Rgba | PixelFormat::Bgra => {
                 DecodedFrame::new_with_arc(Arc::clone(data), self.width, self.height)
             }
             PixelFormat::Nv12 => DecodedFrame::new_nv12_with_arc(

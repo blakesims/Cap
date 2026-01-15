@@ -118,7 +118,7 @@ impl CameraLayer {
             }
 
             match format {
-                PixelFormat::Rgba => {
+                PixelFormat::Rgba | PixelFormat::Bgra => {
                     let src_bytes_per_row = frame_size.x * 4;
 
                     queue.write_texture(

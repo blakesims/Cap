@@ -187,11 +187,24 @@ impl H264EncoderBuilder {
         bpp: f32,
         external_conversion: bool,
     ) -> Result<H264Encoder, H264EncoderError> {
-        let encoder_supports_input_format = codec
+        let supported_formats: Vec<_> = codec
             .video()
             .ok()
             .and_then(|codec_video| codec_video.formats())
-            .is_some_and(|mut formats| formats.any(|f| f == input_config.pixel_format));
+            .map(|formats| formats.collect())
+            .unwrap_or_default();
+
+        let encoder_supports_input_format = supported_formats
+            .iter()
+            .any(|f| *f == input_config.pixel_format);
+
+        debug!(
+            encoder = %codec.name(),
+            input_format = ?input_config.pixel_format,
+            supported_formats = ?supported_formats,
+            encoder_supports_input = encoder_supports_input_format,
+            "[T002-S06] Encoder format support check"
+        );
 
         let mut needs_pixel_conversion = false;
 

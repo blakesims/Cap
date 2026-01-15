@@ -134,9 +134,9 @@ impl GifEncoderWrapper {
                 let pixel_start = src_row_start + (x as usize) * 4;
 
                 if pixel_start + 3 < frame_data.len() {
-                    let r = frame_data[pixel_start];
+                    let b = frame_data[pixel_start];
                     let g = frame_data[pixel_start + 1];
-                    let b = frame_data[pixel_start + 2];
+                    let r = frame_data[pixel_start + 2];
                     let a = frame_data[pixel_start + 3];
 
                     rgba_pixels.push(RGBA8::new(r, g, b, a));

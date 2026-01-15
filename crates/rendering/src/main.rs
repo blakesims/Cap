@@ -209,11 +209,14 @@ async fn main() -> Result<()> {
 }
 
 fn save_as_png(frame: &RenderedFrame, output_path: &PathBuf) -> Result<()> {
-    // Use RGBA data directly for PNG to preserve transparency
     let rgba_data: Vec<u8> = frame
         .data
         .chunks(frame.padded_bytes_per_row as usize)
-        .flat_map(|row| row[0..(frame.width * 4) as usize].to_vec())
+        .flat_map(|row| {
+            row[0..(frame.width * 4) as usize]
+                .chunks(4)
+                .flat_map(|bgra| [bgra[2], bgra[1], bgra[0], bgra[3]])
+        })
         .collect();
 
     let rgba_img =
@@ -227,14 +230,13 @@ fn save_as_png(frame: &RenderedFrame, output_path: &PathBuf) -> Result<()> {
 }
 
 fn save_as_jpeg(frame: &RenderedFrame, output_path: &PathBuf) -> Result<()> {
-    // Convert RGBA data to RGB for JPEG
     let rgb_data: Vec<u8> = frame
         .data
         .chunks(frame.padded_bytes_per_row as usize)
         .flat_map(|row| {
             row[0..(frame.width * 4) as usize]
                 .chunks(4)
-                .flat_map(|chunk| [chunk[0], chunk[1], chunk[2]]) // Skip alpha channel
+                .flat_map(|bgra| [bgra[2], bgra[1], bgra[0]])
         })
         .collect();
 

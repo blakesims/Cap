@@ -23,7 +23,7 @@ impl TextLayer {
         let swash_cache = SwashCache::new();
         let cache = Cache::new(device);
         let viewport = Viewport::new(device, &cache);
-        let mut text_atlas = TextAtlas::new(device, queue, &cache, wgpu::TextureFormat::Rgba8Unorm);
+        let mut text_atlas = TextAtlas::new(device, queue, &cache, wgpu::TextureFormat::Bgra8Unorm);
         let text_renderer = TextRenderer::new(
             &mut text_atlas,
             device,

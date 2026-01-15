@@ -79,7 +79,7 @@ impl PendingReadback {
             height: self.height,
             frame_number: self.frame_number,
             target_time_ns,
-            pixel_format: PixelFormat::Rgba,
+            pixel_format: PixelFormat::Bgra,
             y_plane_size: None,
         })
     }
@@ -224,7 +224,7 @@ impl RenderSession {
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8Unorm,
+                format: wgpu::TextureFormat::Bgra8Unorm,
                 usage: wgpu::TextureUsages::TEXTURE_BINDING
                     | wgpu::TextureUsages::RENDER_ATTACHMENT
                     | wgpu::TextureUsages::COPY_SRC,
@@ -259,7 +259,7 @@ impl RenderSession {
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8Unorm,
+                format: wgpu::TextureFormat::Bgra8Unorm,
                 usage: wgpu::TextureUsages::TEXTURE_BINDING
                     | wgpu::TextureUsages::RENDER_ATTACHMENT
                     | wgpu::TextureUsages::COPY_SRC,
@@ -347,7 +347,7 @@ pub struct RenderedFrame {
 impl RenderedFrame {
     pub fn y_plane(&self) -> &[u8] {
         match self.pixel_format {
-            PixelFormat::Rgba | PixelFormat::Yuv420p => &self.data,
+            PixelFormat::Rgba | PixelFormat::Bgra | PixelFormat::Yuv420p => &self.data,
             PixelFormat::Nv12 => {
                 let size = self.y_plane_size.unwrap_or(self.data.len());
                 &self.data[..size]
@@ -357,7 +357,7 @@ impl RenderedFrame {
 
     pub fn uv_plane(&self) -> Option<&[u8]> {
         match self.pixel_format {
-            PixelFormat::Rgba | PixelFormat::Yuv420p => None,
+            PixelFormat::Rgba | PixelFormat::Bgra | PixelFormat::Yuv420p => None,
             PixelFormat::Nv12 => {
                 let y_size = self.y_plane_size.unwrap_or(0);
                 Some(&self.data[y_size..])
