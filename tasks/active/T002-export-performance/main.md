@@ -64,9 +64,9 @@ Option B: Decode (HW) → Render/Composite (GPU/RGBA) → GPU Readback (RGBA) �
 | S02 | Audit format conversion flow | Low | ~2h | ✅ Done | [S02-format-audit.md](./stories/S02-format-audit.md) |
 | S03 | ~~Implement RGBAToNV12 GPU converter~~ | Medium | ~4-6h | ⚠️ Superseded | [S03-rgba-nv12-converter.md](./stories/S03-rgba-nv12-converter.md) |
 | S04 | ~~Integrate GPU conversion into frame pipeline~~ | Medium-High | ~6-8h | ⚠️ Superseded | [S04-pipeline-integration.md](./stories/S04-pipeline-integration.md) |
-| S05 | Establish baseline & verify current bottleneck | Low | ~1-2h | 🔄 Revised | Inline |
-| S06 | Implement VTPixelTransferSession for RGBA→NV12 | Medium | ~2-3h | 🆕 **NEXT** | Inline |
-| S07 | Benchmark and validate improvements | Low | ~1h | Planned | Inline |
+| S05 | Establish baseline & verify current bottleneck | Low | ~1-2h | 🆕 **NEXT** | Inline |
+| S06 | Implement VTPixelTransferSession for RGBA→NV12 | Medium | ~2-3h | Pending S05 | Inline |
+| S07 | Benchmark and validate improvements | Low | ~1h | Pending S06 | Inline |
 
 ### Story Status Legend
 - ✅ Done - Completed and working
@@ -182,33 +182,64 @@ S05 (Baseline) → S06 (VTPixelTransfer) → S07 (Validate)
 - `crates/export/src/mp4.rs` - Integration (gated by env var)
 
 ### S05 - Establish Baseline & Verify Current Bottleneck 🔄 Revised
-**Complexity: Low (~1-2h)** | **Status: Revised** | **Priority: HIGH**
+**Complexity: Low (~1-2h)** | **Status: NEXT** | **Priority: HIGH**
 
 **Background:** Implementation review found that the original S05 premise ("BGRA direct input skips conversion") is incorrect. The encoder already accepts BGRA but converts internally via FFmpeg's `sws_scale`. This story is revised to establish a proper baseline before implementing VTPixelTransferSession.
 
-**Rationale:** We need documented baseline measurements and verification that `sws_scale` is indeed the bottleneck before implementing S06. This ensures we're measuring the right thing.
+**Rationale:** We need documented baseline measurements and verification that `sws_scale` is indeed the bottleneck before implementing S06. This validates our optimization target is correct.
+
+-   **Deliverables:**
+
+    1. **Benchmark Script** (`scripts/benchmark-export.sh`)
+       - Triggers an export via the desktop app
+       - Captures backend logs to a file
+       - Extracts relevant metrics (export time, FPS, frame count)
+       - Outputs a summary report
+
+    2. **Instrumentation PR** (temporary logging)
+       - Add timing logs around `sws_scale` in `h264.rs:241-289`
+       - Log format conversion path taken (BGRA→NV12 via sws_scale)
+       - Log per-frame conversion time (sampled, not every frame)
+
+    3. **Baseline Report** (`tasks/active/T002-export-performance/baseline-report.md`)
+       - Test hardware specs (Mac model, chip, RAM)
+       - Test recording specs (resolution, duration, frame count)
+       - Metrics: total export time, FPS, CPU% during export
+       - Confirmation of sws_scale usage with timing breakdown
+       - Go/no-go decision for S06
 
 -   **Acceptance Criteria:**
-    -   [ ] Document baseline export performance (FPS, time, CPU/GPU usage)
-    -   [ ] Verify `sws_scale` is the bottleneck via profiling/logging
-    -   [ ] Confirm current encoder path (BGRA → sws_scale → NV12 → VideoToolbox)
-    -   [ ] Establish test recordings for consistent benchmarking
+    -   [ ] Benchmark script runs and produces consistent results
+    -   [ ] Logs confirm sws_scale is being called for format conversion
+    -   [ ] Baseline FPS documented (expecting ~40-45 fps)
+    -   [ ] sws_scale time as % of total export time measured
+    -   [ ] If sws_scale is <10% of export time, reassess S06 value
 
--   **Tasks/Subtasks:**
-    -   [ ] Run export on standardized test recording (1080p, 1min)
-    -   [ ] Log/profile to confirm `sws_scale` usage (`h264.rs:241-289`)
-    -   [ ] Record baseline metrics: export time, FPS, CPU%, memory peak
-    -   [ ] Document test recording specs for S07 comparison
-    -   [ ] Verify `with_external_conversion(true)` would skip internal conversion
+-   **How to Run:**
+    ```bash
+    # 1. Pull latest code on Mac
+    git pull origin blake/stable
 
--   **Key Files:**
-    - `crates/enc-ffmpeg/src/video/h264.rs:241-289` - sws_scale conversion point
-    - `crates/export/src/mp4.rs` - Export orchestration
+    # 2. Start desktop app in dev mode, redirect logs
+    pnpm run dev:desktop 2>&1 | tee /tmp/cap-export.log &
 
--   **Expected Outcome:**
-    - Documented baseline: ~43 fps export performance
-    - Confirmed bottleneck: CPU-based sws_scale
-    - Ready for S06 implementation with clear before/after comparison
+    # 3. Trigger export through UI (or via script if available)
+    # Export a test recording
+
+    # 4. Extract metrics from logs
+    grep -E "(export|sws_scale|frame|fps)" /tmp/cap-export.log > baseline-metrics.txt
+
+    # 5. Kill dev server when done
+    ```
+
+-   **Key Files to Instrument:**
+    - `crates/enc-ffmpeg/src/video/h264.rs:241-289` - Add timing around sws_scale
+    - `crates/export/src/mp4.rs` - Log export start/end with frame counts
+
+-   **Success Criteria:**
+    - If sws_scale takes >20% of export time → S06 is valuable, proceed
+    - If sws_scale takes <10% of export time → Bottleneck is elsewhere, investigate
+    - Either way, we have documented baseline for comparison
 
 ---
 
