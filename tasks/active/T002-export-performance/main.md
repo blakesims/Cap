@@ -64,14 +64,23 @@ Option B: Decode (HW) → Render/Composite (GPU/RGBA) → GPU Readback (RGBA) �
 | S02 | Audit format conversion flow | Low | ~2h | ✅ Done | [S02-format-audit.md](./stories/S02-format-audit.md) |
 | S03 | ~~Implement RGBAToNV12 GPU converter~~ | Medium | ~4-6h | ⚠️ Superseded | [S03-rgba-nv12-converter.md](./stories/S03-rgba-nv12-converter.md) |
 | S04 | ~~Integrate GPU conversion into frame pipeline~~ | Medium-High | ~6-8h | ⚠️ Superseded | [S04-pipeline-integration.md](./stories/S04-pipeline-integration.md) |
-| S05 | Test BGRA direct input to VideoToolbox encoder | Low | ~2h | 🆕 Planned | Inline |
-| S06 | Implement VTPixelTransferSession (if S05 insufficient) | Medium | ~4h | 🆕 Planned | Inline |
-| S07 | Benchmark and validate improvements | Low | ~2h | Planned | Inline |
+| S05 | Establish baseline & verify current bottleneck | Low | ~1-2h | 🔄 Revised | Inline |
+| S06 | Implement VTPixelTransferSession for RGBA→NV12 | Medium | ~2-3h | 🆕 **NEXT** | Inline |
+| S07 | Benchmark and validate improvements | Low | ~1h | Planned | Inline |
 
 ### Story Status Legend
 - ✅ Done - Completed and working
 - ⚠️ Superseded - Completed but approach abandoned (code disabled, kept for reference)
-- 🆕 Planned - New stories from strategic pivot
+- 🔄 Revised - Story redefined based on implementation review
+- 🆕 **NEXT** - Priority story for implementation
+
+### Execution Order (Revised per Implementation Review)
+
+```
+S05 (Baseline) → S06 (VTPixelTransfer) → S07 (Validate)
+```
+
+**Rationale:** Implementation review found that S05's original premise ("BGRA direct input skips conversion") is incorrect - the encoder already handles BGRA but converts internally. S06 (VTPixelTransferSession) is the actual optimization. See Section 15 for full analysis.
 
 ## 4. Story Details
 
@@ -172,51 +181,63 @@ Option B: Decode (HW) → Render/Composite (GPU/RGBA) → GPU Readback (RGBA) �
 - `crates/gpu-converters/src/rgba_nv12/` - Shader and Rust wrapper
 - `crates/export/src/mp4.rs` - Integration (gated by env var)
 
-### S05 - Test BGRA Direct Input to VideoToolbox Encoder 🆕
-**Complexity: Low (~2h)** | **Status: Planned** | **Priority: HIGHEST**
+### S05 - Establish Baseline & Verify Current Bottleneck 🔄 Revised
+**Complexity: Low (~1-2h)** | **Status: Revised** | **Priority: HIGH**
 
-**Rationale:** Research confirmed VideoToolbox H.264 encoder can accept BGRA input directly. If this works, we skip format conversion entirely - the simplest possible solution.
+**Background:** Implementation review found that the original S05 premise ("BGRA direct input skips conversion") is incorrect. The encoder already accepts BGRA but converts internally via FFmpeg's `sws_scale`. This story is revised to establish a proper baseline before implementing VTPixelTransferSession.
+
+**Rationale:** We need documented baseline measurements and verification that `sws_scale` is indeed the bottleneck before implementing S06. This ensures we're measuring the right thing.
 
 -   **Acceptance Criteria:**
-    -   [ ] Determine if FFmpeg's `h264_videotoolbox` accepts BGRA pixel format
-    -   [ ] Modify encoder configuration to use BGRA input
-    -   [ ] Verify output quality is identical to NV12 path
-    -   [ ] Measure performance improvement vs baseline
+    -   [ ] Document baseline export performance (FPS, time, CPU/GPU usage)
+    -   [ ] Verify `sws_scale` is the bottleneck via profiling/logging
+    -   [ ] Confirm current encoder path (BGRA → sws_scale → NV12 → VideoToolbox)
+    -   [ ] Establish test recordings for consistent benchmarking
 
 -   **Tasks/Subtasks:**
-    -   [ ] Review `crates/enc-ffmpeg/src/video/h264.rs` encoder configuration
-    -   [ ] Test with `-pix_fmt bgra` or equivalent FFmpeg option
-    -   [ ] Check if `with_external_conversion(false)` enables internal BGRA→NV12
-    -   [ ] Benchmark: if encoder accepts BGRA, compare to CPU sws_scale baseline
-    -   [ ] Document findings
+    -   [ ] Run export on standardized test recording (1080p, 1min)
+    -   [ ] Log/profile to confirm `sws_scale` usage (`h264.rs:241-289`)
+    -   [ ] Record baseline metrics: export time, FPS, CPU%, memory peak
+    -   [ ] Document test recording specs for S07 comparison
+    -   [ ] Verify `with_external_conversion(true)` would skip internal conversion
 
 -   **Key Files:**
-    - `crates/enc-ffmpeg/src/video/h264.rs` - Encoder configuration
-    - `crates/media-info/src/lib.rs` - Frame wrapping
+    - `crates/enc-ffmpeg/src/video/h264.rs:241-289` - sws_scale conversion point
+    - `crates/export/src/mp4.rs` - Export orchestration
 
 -   **Expected Outcome:**
-    - If BGRA works: Task essentially complete with minimal code changes
-    - If BGRA doesn't work: Proceed to S06 (VTPixelTransferSession)
+    - Documented baseline: ~43 fps export performance
+    - Confirmed bottleneck: CPU-based sws_scale
+    - Ready for S06 implementation with clear before/after comparison
 
 ---
 
-### S06 - Implement VTPixelTransferSession (Fallback) 🆕
-**Complexity: Medium (~4h)** | **Status: Planned** | **Priority: HIGH (if S05 fails)**
+### S06 - Implement VTPixelTransferSession for RGBA→NV12 🆕 **PRIMARY**
+**Complexity: Medium (~2-3h)** | **Status: NEXT** | **Priority: HIGHEST**
 
-**Rationale:** Apple's `VTPixelTransferSession` is a hardware-accelerated format converter. Already partially exists in `crates/frame-converter/src/videotoolbox.rs`.
+**Background:** Implementation review confirmed this is the actual optimization. The encoder already accepts BGRA but uses CPU-based `sws_scale` internally. VTPixelTransferSession replaces `sws_scale` with Apple's hardware-accelerated converter.
+
+**Rationale:** Apple's `VTPixelTransferSession` is a hardware-accelerated format converter that:
+- Runs on GPU/Apple Neural Engine
+- Supports zero-copy with proper CVPixelBuffer management
+- Already has partial infrastructure in `crates/frame-converter/src/videotoolbox.rs`
+- Is the proven, Apple-recommended approach
 
 -   **Acceptance Criteria:**
-    -   [ ] Rust FFI wrapper for `VTPixelTransferSession`
-    -   [ ] Replace `sws_scale` with `VTPixelTransferSessionTransferImage`
+    -   [ ] Add RGBA→NV12 support to existing `VTPixelTransferSession` wrapper
+    -   [ ] Replace `sws_scale` path with `VTPixelTransferSessionTransferImage`
+    -   [ ] Enable via `with_external_conversion(true)` flag
     -   [ ] Verify output quality matches baseline
-    -   [ ] Measure performance improvement (target: 50+ fps)
+    -   [ ] Achieve target: 50+ fps (up from 43 fps baseline)
 
 -   **Tasks/Subtasks:**
-    -   [ ] Review existing `crates/frame-converter/src/videotoolbox.rs`
-    -   [ ] Implement `VTPixelTransferSessionCreate` / `TransferImage` / `Invalidate`
+    -   [ ] Review existing `crates/frame-converter/src/videotoolbox.rs` (already supports YUYV→NV12, UYVY→NV12)
+    -   [ ] Add `rgba_to_nv12()` method using existing patterns
+    -   [ ] Wrap RGBA frame data in `CVPixelBuffer` (source)
     -   [ ] Create NV12 `CVPixelBuffer` for destination
-    -   [ ] Integrate into `mp4.rs` export pipeline
-    -   [ ] Benchmark against CPU baseline
+    -   [ ] Call `VTPixelTransferSessionTransferImage` for conversion
+    -   [ ] Integrate into `h264.rs` encoder setup (alternative to sws_scale path)
+    -   [ ] Add feature flag for easy A/B testing
 
 -   **API Usage (from research):**
     ```c
@@ -227,7 +248,7 @@ Option B: Decode (HW) → Render/Composite (GPU/RGBA) → GPU Readback (RGBA) �
     CVPixelBufferRef destNV12;
     CVPixelBufferCreate(..., kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, &destNV12);
     VTPixelTransferSessionTransferImage(session, sourceRGBA, destNV12, NULL);
-    // destNV12 now contains converted frame
+    // destNV12 now contains converted frame - send to encoder
 
     // Cleanup:
     VTPixelTransferSessionInvalidate(session);
@@ -235,8 +256,15 @@ Option B: Decode (HW) → Render/Composite (GPU/RGBA) → GPU Readback (RGBA) �
     ```
 
 -   **Key Files:**
-    - `crates/frame-converter/src/videotoolbox.rs` - Existing VT wrapper
+    - `crates/frame-converter/src/videotoolbox.rs` - Existing VT wrapper (extend)
+    - `crates/enc-ffmpeg/src/video/h264.rs:241-289` - Replace sws_scale call
     - `crates/export/src/mp4.rs` - Integration point
+
+-   **Why This Works (vs Custom WGSL):**
+    - Reuses existing VideoToolbox session (no new GPU context)
+    - No blocking operations needed
+    - No double readback - conversion happens in encoder path
+    - Apple-optimized for their hardware
 
 ---
 
@@ -590,11 +618,15 @@ The code is kept for:
 - Educational value (working BT.709 RGBA→NV12 shader)
 - Potential future use if wgpu gains better CVPixelBuffer/IOSurface support
 
-### Updated Task Plan
+### Updated Task Plan (Revised 2026-01-15)
 
-1. **S05** (NEXT): Test BGRA direct input - may solve everything with minimal code
-2. **S06** (IF NEEDED): Implement VTPixelTransferSession
-3. **S07**: Benchmark and validate 50-55 fps target achieved
+**Execution Order:** S05 → S06 → S07
+
+1. **S05** (Baseline): Establish baseline metrics & verify sws_scale is the bottleneck
+2. **S06** (PRIMARY): Implement VTPixelTransferSession to replace sws_scale
+3. **S07** (Validate): Benchmark and validate 50-55 fps target achieved
+
+See Section 15 for implementation review that led to this revised order.
 
 ### Key Learnings
 
@@ -609,3 +641,57 @@ The code is kept for:
 - `s04-investigation-report.md` - Technical investigation of failures
 - Apple WWDC: VideoToolbox and VTPixelTransferSession documentation
 - FFmpeg VideoToolbox overlay filter examples
+
+## 15. Implementation Review Findings (2026-01-15)
+
+Prior to implementation, a subagent reviewed the S05-S07 plan for gaps, inconsistencies, and incorrect assumptions. The full review is in `stories/S05-S07-implementation-review.md`.
+
+### Critical Finding: S05 Premise Was Incorrect
+
+**Original S05 Assumption:** "VideoToolbox encoder can accept BGRA directly, skipping conversion entirely"
+
+**Actual Behavior:** The encoder already accepts BGRA, but FFmpeg's `h264_videotoolbox` performs internal conversion via `sws_scale` before passing to VideoToolbox. The "BGRA direct input" optimization was already happening - just inefficiently.
+
+```
+What we thought:      BGRA → [skip conversion] → Encoder
+What actually happens: BGRA → sws_scale (CPU) → NV12 → Encoder
+```
+
+### Revised Understanding
+
+| Component | Original Understanding | Corrected Understanding |
+|-----------|----------------------|-------------------------|
+| S05 (BGRA Direct) | "Skip conversion entirely" | Conversion already happens via sws_scale internally |
+| S06 (VTPixelTransfer) | "Fallback if S05 fails" | **The actual optimization** - replaces sws_scale |
+| Bottleneck | "Format conversion" | Specifically `sws_scale` CPU conversion in encoder path |
+
+### Why This Matters
+
+1. **S05 was solving an already-solved problem** - encoder already handles BGRA
+2. **S06 is the real optimization** - replaces CPU sws_scale with HW VTPixelTransfer
+3. **No code changes needed for "BGRA direct"** - it's already the default
+
+### Revised Execution Order
+
+```
+Previous:  S05 (test BGRA) → S06 (fallback) → S07 (benchmark)
+Revised:   S05 (baseline)  → S06 (primary)  → S07 (validate)
+```
+
+**Rationale:**
+- S05 now establishes baseline and confirms sws_scale is the bottleneck
+- S06 is the primary implementation story (not a fallback)
+- S07 validates the improvement against documented baseline
+
+### Other Review Findings
+
+1. **Baseline poorly documented**: The "43 fps" figure was referenced but test conditions weren't specified
+2. **Success criteria needs verification**: Need to confirm hardware specs, test recording, measurement methodology
+3. **VTPixelTransferSession exists**: `crates/frame-converter/src/videotoolbox.rs` already has YUYV→NV12 support; adding RGBA→NV12 follows same pattern
+
+### Action Taken
+
+- S05 redefined as baseline establishment story
+- S06 promoted from "fallback" to "primary optimization"
+- Story details updated with corrected technical understanding
+- Full review document preserved for reference
