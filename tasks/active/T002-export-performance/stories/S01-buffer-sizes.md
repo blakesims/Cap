@@ -267,3 +267,16 @@ Code review identified missing `use sysinfo::System;` import in buffer_config.rs
 
 ### Pre-existing Comments
 Code review flagged doc comments in gif.rs (lines 13-16) and regular comments (lines 56, 69). These are pre-existing and not introduced by S01 - not removed per scope constraint.
+
+### std::sync::mpsc::send_timeout() Does Not Exist (Critical Fix)
+**Issue discovered during build testing**: `std::sync::mpsc::SyncSender::send_timeout()` is NOT available in stable Rust - it's an internal/unstable API.
+
+**Original plan assumed**: sync channels have `send_timeout()` like async channels have timeout wrappers.
+
+**Reality**: `std::sync::mpsc` only provides:
+- `send()` - blocks until space available or receiver dropped
+- `try_send()` - returns immediately if channel full (but SyncSender doesn't have this either!)
+
+**Fix applied**: Replaced with blocking `send()`. The receive-side timeout (`tokio::time::timeout` on frame receive) already provides stall protection. The increased buffer sizes (S01's main value) absorb temporary encoder delays.
+
+**Lesson**: Always verify API existence in stable Rust before planning. Crate-specific APIs (like `crossbeam-channel::send_timeout()`) exist but std doesn't have them.
