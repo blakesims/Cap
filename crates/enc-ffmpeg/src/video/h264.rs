@@ -348,6 +348,8 @@ impl H264EncoderBuilder {
             input_width: input_config.width,
             input_height: input_config.height,
             converted_frame_pool,
+            sws_total_micros: std::sync::atomic::AtomicU64::new(0),
+            frame_count: std::sync::atomic::AtomicU64::new(0),
         })
     }
 }
@@ -363,6 +365,8 @@ pub struct H264Encoder {
     input_width: u32,
     input_height: u32,
     converted_frame_pool: Option<frame::Video>,
+    sws_total_micros: std::sync::atomic::AtomicU64,
+    frame_count: std::sync::atomic::AtomicU64,
 }
 
 pub struct ConversionRequirements {
@@ -415,14 +419,39 @@ impl H264Encoder {
             .update_pts(&mut frame, timestamp, &mut self.encoder);
 
         let frame_to_send = if let Some(converter) = &mut self.converter {
+            let start = std::time::Instant::now();
             let pts = frame.pts();
             let converted = self.converted_frame_pool.as_mut().unwrap();
+
+            let current_frame = self.frame_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            if current_frame == 0 {
+                debug!(
+                    src_format = ?self.input_format,
+                    dst_format = ?self.output_format,
+                    resolution = %format!("{}x{}", self.input_width, self.input_height),
+                    "[T002-S05] Format conversion: using sws_scale for CPU conversion"
+                );
+            }
+
             converter
                 .run(&frame, converted)
                 .map_err(QueueFrameError::Converter)?;
+
+            let elapsed_micros = start.elapsed().as_micros() as u64;
+            self.sws_total_micros.fetch_add(elapsed_micros, std::sync::atomic::Ordering::Relaxed);
+
+            if current_frame % 100 == 0 {
+                trace!(
+                    frame = current_frame,
+                    conversion_time_us = elapsed_micros,
+                    "[T002-S05] sws_scale frame timing"
+                );
+            }
+
             converted.set_pts(pts);
             converted as &frame::Video
         } else {
+            self.frame_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             &frame
         };
 
@@ -443,16 +472,41 @@ impl H264Encoder {
         self.base.update_pts(frame, timestamp, &mut self.encoder);
 
         let frame_to_send = if let Some(converter) = &mut self.converter {
+            let start = std::time::Instant::now();
             let pts = frame.pts();
             let converted = converted_frame.get_or_insert_with(|| {
                 frame::Video::new(self.output_format, self.output_width, self.output_height)
             });
+
+            let current_frame = self.frame_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            if current_frame == 0 {
+                debug!(
+                    src_format = ?self.input_format,
+                    dst_format = ?self.output_format,
+                    resolution = %format!("{}x{}", self.input_width, self.input_height),
+                    "[T002-S05] Format conversion: using sws_scale for CPU conversion"
+                );
+            }
+
             converter
                 .run(frame, converted)
                 .map_err(QueueFrameError::Converter)?;
+
+            let elapsed_micros = start.elapsed().as_micros() as u64;
+            self.sws_total_micros.fetch_add(elapsed_micros, std::sync::atomic::Ordering::Relaxed);
+
+            if current_frame % 100 == 0 {
+                trace!(
+                    frame = current_frame,
+                    conversion_time_us = elapsed_micros,
+                    "[T002-S05] sws_scale frame timing"
+                );
+            }
+
             converted.set_pts(pts);
             converted as &frame::Video
         } else {
+            self.frame_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             frame as &frame::Video
         };
 
@@ -490,7 +544,28 @@ impl H264Encoder {
     }
 
     pub fn flush(&mut self, output: &mut format::context::Output) -> Result<(), ffmpeg::Error> {
+        let total_frames = self.frame_count.load(std::sync::atomic::Ordering::Relaxed);
+        let total_micros = self.sws_total_micros.load(std::sync::atomic::Ordering::Relaxed);
+
+        if total_micros > 0 && total_frames > 0 {
+            let total_ms = total_micros as f64 / 1000.0;
+            let avg_us = total_micros as f64 / total_frames as f64;
+            debug!(
+                frames = total_frames,
+                total_sws_ms = format!("{:.1}", total_ms),
+                avg_sws_us = format!("{:.1}", avg_us),
+                "[T002-S05] sws_scale total conversion time"
+            );
+        }
+
         self.base.process_eof(output, &mut self.encoder)
+    }
+
+    pub fn get_sws_stats(&self) -> (u64, u64) {
+        (
+            self.frame_count.load(std::sync::atomic::Ordering::Relaxed),
+            self.sws_total_micros.load(std::sync::atomic::Ordering::Relaxed)
+        )
     }
 }
 

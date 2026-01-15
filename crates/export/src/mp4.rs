@@ -60,13 +60,20 @@ impl Mp4ExportSettings {
         base: ExporterBase,
         mut on_progress: impl FnMut(u32) -> bool + Send + 'static,
     ) -> Result<PathBuf, String> {
+        let export_start = std::time::Instant::now();
         let output_path = base.output_path.clone();
         let meta = &base.studio_meta;
 
         let buffer_config = ExportBufferConfig::for_current_system();
 
+        let expected_frames = base.total_frames(self.fps);
         info!("Exporting mp4 with settings: {:?}", &self);
-        info!("Expected to render {} frames", base.total_frames(self.fps));
+        info!(
+            frames = expected_frames,
+            fps = self.fps,
+            resolution = %format!("{}x{}", self.resolution_base.x, self.resolution_base.y),
+            "[T002-S05] Export started"
+        );
 
         let rgba_to_nv12: Option<Arc<RGBAToNV12>> = if gpu_conversion_enabled() {
             match RGBAToNV12::new().await {
@@ -371,6 +378,21 @@ impl Mp4ExportSettings {
         .then(|v| async { v.map_err(|e| e.to_string()) });
 
         tokio::try_join!(encoder_thread, render_video_task, render_task)?;
+
+        let export_duration = export_start.elapsed();
+        let duration_ms = export_duration.as_millis() as u64;
+        let actual_fps = if duration_ms > 0 {
+            (expected_frames as f64 * 1000.0) / duration_ms as f64
+        } else {
+            0.0
+        };
+
+        info!(
+            frames = expected_frames,
+            duration_ms = duration_ms,
+            fps = format!("{:.1}", actual_fps),
+            "[T002-S05] Export complete"
+        );
 
         Ok(output_path)
     }
