@@ -1,6 +1,7 @@
 use crate::{ExporterBase, buffer_config::ExportBufferConfig};
 use cap_editor::{AudioRenderer, get_audio_segments};
 use cap_enc_ffmpeg::{AudioEncoder, aac::AACEncoder, h264::H264Encoder, mp4::*};
+use cap_gpu_converters::RGBAToNV12;
 use cap_media_info::{RawVideoFormat, VideoInfo};
 use cap_project::XY;
 use cap_rendering::{ProjectUniforms, RenderSegment, RenderedFrame};
@@ -8,8 +9,8 @@ use futures::FutureExt;
 use image::ImageBuffer;
 use serde::Deserialize;
 use specta::Type;
-use std::{path::PathBuf, time::Duration};
-use tracing::{info, trace, warn};
+use std::{path::PathBuf, sync::Arc, time::Duration};
+use tracing::{debug, info, trace, warn};
 
 #[derive(Deserialize, Type, Clone, Copy, Debug)]
 pub enum ExportCompression {
@@ -47,6 +48,12 @@ impl Mp4ExportSettings {
     }
 }
 
+fn gpu_conversion_enabled() -> bool {
+    std::env::var("CAP_GPU_FORMAT_CONVERSION")
+        .map(|v| v != "0" && v.to_lowercase() != "false")
+        .unwrap_or(true)
+}
+
 impl Mp4ExportSettings {
     pub async fn export(
         self,
@@ -61,6 +68,24 @@ impl Mp4ExportSettings {
         info!("Exporting mp4 with settings: {:?}", &self);
         info!("Expected to render {} frames", base.total_frames(self.fps));
 
+        let rgba_to_nv12: Option<Arc<RGBAToNV12>> = if gpu_conversion_enabled() {
+            match RGBAToNV12::new().await {
+                Ok(converter) => {
+                    info!("GPU RGBA→NV12 converter initialized - using GPU format conversion");
+                    Some(Arc::new(converter))
+                }
+                Err(e) => {
+                    warn!(error = %e, "GPU converter initialization failed - falling back to CPU conversion");
+                    None
+                }
+            }
+        } else {
+            debug!("GPU format conversion disabled via CAP_GPU_FORMAT_CONVERSION");
+            None
+        };
+
+        let use_nv12 = rgba_to_nv12.is_some();
+
         let (tx_image_data, mut video_rx) = tokio::sync::mpsc::channel::<(RenderedFrame, u32)>(buffer_config.rendered_frame_buffer);
         let (frame_tx, frame_rx) = std::sync::mpsc::sync_channel::<MP4Input>(buffer_config.encoder_input_buffer);
 
@@ -72,8 +97,12 @@ impl Mp4ExportSettings {
             self.resolution_base,
         );
 
-        let mut video_info =
-            VideoInfo::from_raw(RawVideoFormat::Rgba, output_size.0, output_size.1, fps);
+        let video_format = if use_nv12 {
+            RawVideoFormat::Nv12
+        } else {
+            RawVideoFormat::Rgba
+        };
+        let mut video_info = VideoInfo::from_raw(video_format, output_size.0, output_size.1, fps);
         video_info.time_base = ffmpeg::Rational::new(1, fps as i32);
 
         let audio_segments = get_audio_segments(&base.segments);
@@ -91,9 +120,12 @@ impl Mp4ExportSettings {
                 "output",
                 base.output_path.clone(),
                 |o| {
-                    H264Encoder::builder(video_info)
-                        .with_bpp(self.effective_bpp())
-                        .build(o)
+                    let builder = H264Encoder::builder(video_info).with_bpp(self.effective_bpp());
+                    if use_nv12 {
+                        builder.with_external_conversion().build(o)
+                    } else {
+                        builder.build(o)
+                    }
                 },
                 |o| {
                     has_audio.then(|| {
@@ -134,6 +166,7 @@ impl Mp4ExportSettings {
         let render_task = tokio::spawn({
             let project = base.project_config.clone();
             let project_path = base.project_path.clone();
+            let converter = rgba_to_nv12;
             async move {
                 let mut frame_count = 0;
                 let mut first_frame = None;
@@ -143,6 +176,7 @@ impl Mp4ExportSettings {
 
                 let mut consecutive_timeouts = 0u32;
                 const MAX_CONSECUTIVE_TIMEOUTS: u32 = 3;
+                let mut conversion_logged = false;
 
                 loop {
                     let timeout_secs = if frame_count == 0 { 120 } else { 90 };
@@ -215,13 +249,51 @@ impl Mp4ExportSettings {
                         })
                     });
 
-                    let mp4_input = MP4Input {
-                        audio: audio_frame,
-                        video: video_info.wrap_frame(
+                    let video_frame = if let Some(ref conv) = converter {
+                        let rgba_data: Vec<u8> = frame
+                            .data
+                            .chunks(frame.padded_bytes_per_row as usize)
+                            .flat_map(|row| &row[..(frame.width * 4) as usize])
+                            .copied()
+                            .collect();
+
+                        match conv.convert(&rgba_data, frame.width, frame.height) {
+                            Ok((y_plane, uv_plane)) => {
+                                if !conversion_logged {
+                                    debug!(
+                                        width = frame.width,
+                                        height = frame.height,
+                                        y_size = y_plane.len(),
+                                        uv_size = uv_plane.len(),
+                                        "GPU RGBA→NV12 conversion active"
+                                    );
+                                    conversion_logged = true;
+                                }
+                                let y_plane_size = y_plane.len();
+                                let mut nv12_data = y_plane;
+                                nv12_data.extend(uv_plane);
+                                video_info.wrap_nv12_frame(&nv12_data, y_plane_size, frame_number as i64)
+                            }
+                            Err(e) => {
+                                warn!(
+                                    error = %e,
+                                    frame_number = frame_number,
+                                    "GPU conversion failed for frame, using error frame"
+                                );
+                                return Err(format!("GPU conversion failed: {e}"));
+                            }
+                        }
+                    } else {
+                        video_info.wrap_frame(
                             &frame.data,
                             frame_number as i64,
                             frame.padded_bytes_per_row as usize,
-                        ),
+                        )
+                    };
+
+                    let mp4_input = MP4Input {
+                        audio: audio_frame,
+                        video: video_frame,
                     };
 
                     if frame_tx.send(mp4_input).is_err() {

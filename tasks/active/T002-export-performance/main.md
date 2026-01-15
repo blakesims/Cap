@@ -46,10 +46,10 @@ Decode (HW) → Render/Composite (GPU/RGBA) → Format Convert (GPU ✅) → GPU
 
 | Story ID | Story Name / Objective | Complexity | Est. Hours | Status | Link |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| S01 | Increase channel buffer sizes (with safety) | Low | ~2h | Done | [S01-buffer-sizes.md](./stories/S01-buffer-sizes.md) |
-| S02 | Audit format conversion flow | Low | ~2h | Done | [S02-format-audit.md](./stories/S02-format-audit.md) |
-| S03 | Implement RGBAToNV12 GPU converter | Medium | ~4-6h | Done | [S03-rgba-nv12-converter.md](./stories/S03-rgba-nv12-converter.md) |
-| S04 | Integrate GPU conversion into frame pipeline | Medium-High | ~6-8h | Planned | Inline |
+| S01 | Increase channel buffer sizes (with safety) | Low | ~2h | ✅ Done | [S01-buffer-sizes.md](./stories/S01-buffer-sizes.md) |
+| S02 | Audit format conversion flow | Low | ~2h | ✅ Done | [S02-format-audit.md](./stories/S02-format-audit.md) |
+| S03 | Implement RGBAToNV12 GPU converter | Medium | ~4-6h | ✅ Done | [S03-rgba-nv12-converter.md](./stories/S03-rgba-nv12-converter.md) |
+| S04 | Integrate GPU conversion into frame pipeline | Medium-High | ~6-8h | ✅ Done | [S04-pipeline-integration.md](./stories/S04-pipeline-integration.md) |
 | S05 | Benchmark and validate improvements | Low | ~2h | Planned | Inline |
 
 ## 4. Story Details
@@ -337,3 +337,75 @@ Original estimates revised upward: 35-55% improvement (from 20-40%) due to combi
 - **Issue**: Workspace defines `sysinfo = "0.32"` but recording crate uses `"0.35"`
 - **Fix**: Use explicit version matching recording crate
 - **Impact**: Check actual dependency versions, not just workspace definitions
+
+### std::sync::mpsc::send_timeout() Does NOT Exist (CRITICAL)
+- **Issue**: Plan assumed `std::sync::mpsc::SyncSender::send_timeout()` exists - it doesn't in stable Rust
+- **Error**: `error[E0658]: use of unstable library feature 'std_internals'`
+- **Fix**: Use blocking `send()` instead - the receive-side timeout already provides stall protection
+- **Impact**: Always verify std API existence in stable Rust. Alternative crates like `crossbeam-channel` have `send_timeout()`, but std doesn't
+- **Lesson**: The increased buffer sizes (S01's main value) absorb temporary encoder delays; receive-side timeout catches true stalls
+
+## 11. S01-S03 Testing Results (2026-01-15)
+
+Manual testing on 16GB macOS system confirmed:
+- Export completes successfully (MP4)
+- Buffer config correctly detected 16GB RAM → 32/16 frame buffers
+- Log output: `total_ram_gb=16.0 rendered_buffer=32 encoder_buffer=16`
+- No crashes or errors related to S01-S03 changes
+- Existing decoder warnings (BufferAsyncError) are pre-existing issues unrelated to this work
+
+## 12. S04 Implementation Notes (2026-01-15)
+
+### Integration Approach
+
+Implemented "simple" integration path that provides the main benefit (eliminating CPU sws_scale):
+
+```
+Current Flow (with S04):
+GPU Render (RGBA) → GPU Readback (RGBA) → GPU Convert (RGBA→NV12) → Encode (NV12)
+
+Full Integration (future optimization):
+GPU Render (RGBA) → GPU Convert (RGBA→NV12) → GPU Readback (NV12) → Encode (NV12)
+```
+
+### Files Modified
+
+1. **crates/rendering/src/frame_pipeline.rs**
+   - Extended `RenderedFrame` with `pixel_format` and `y_plane_size` fields
+   - Added `y_plane()` and `uv_plane()` helper methods
+   - Reused existing `PixelFormat` enum from decoder module
+
+2. **crates/media-info/src/lib.rs**
+   - Added `wrap_nv12_frame()` method for multi-plane NV12 format
+
+3. **crates/export/Cargo.toml**
+   - Added `cap-gpu-converters` dependency
+
+4. **crates/export/src/mp4.rs**
+   - Initialize `RGBAToNV12` converter at export start
+   - Conditional NV12 format based on converter availability
+   - Enable `with_external_conversion()` when using NV12
+   - Convert RGBA→NV12 in render_task
+   - Environment variable `CAP_GPU_FORMAT_CONVERSION` for disable
+
+### Benefits of Current Approach
+
+- Eliminates CPU sws_scale (main bottleneck)
+- Simple to implement and test
+- Graceful fallback to RGBA path if GPU fails
+- No changes to core rendering loop
+- Feature flag for easy rollback
+
+### Future Optimization (Not Implemented)
+
+Full integration would move GPU conversion BEFORE readback:
+- Requires refactoring `RGBAToNV12` to use shared device/queue
+- Would reduce PCIe bandwidth by ~62.5%
+- More complex, deferred to follow-up task
+
+### Testing Required
+
+- Build on macOS and verify no compilation errors
+- Export video and check for NV12 conversion log messages
+- Verify output quality matches pre-S04 output
+- Measure performance improvement in S05

@@ -294,30 +294,78 @@ impl VideoInfo {
         let frame_stride = frame.stride(0);
         let frame_height = self.height as usize;
 
-        // Ensure we don't try to copy more data than we have
         if frame.stride(0) == self.width as usize {
             let copy_len = std::cmp::min(data.len(), frame.data_mut(0).len());
             frame.data_mut(0)[0..copy_len].copy_from_slice(&data[0..copy_len]);
         } else {
             for line in 0..frame_height {
                 if line * stride >= data.len() {
-                    break; // Stop if we run out of source data
+                    break;
                 }
 
                 let src_start = line * stride;
                 let src_end = std::cmp::min(src_start + frame_stride, data.len());
                 if src_end <= src_start {
-                    break; // Stop if we can't get any more source data
+                    break;
                 }
 
                 let dst_start = line * frame_stride;
                 let dst_end = dst_start + (src_end - src_start);
 
-                // Only copy if we have enough destination space
                 if dst_end <= frame.data_mut(0).len() {
                     frame.data_mut(0)[dst_start..dst_end]
                         .copy_from_slice(&data[src_start..src_end]);
                 }
+            }
+        }
+
+        frame
+    }
+
+    pub fn wrap_nv12_frame(&self, data: &[u8], y_plane_size: usize, timestamp: i64) -> frame::Video {
+        let mut frame = frame::Video::new(Pixel::NV12, self.width, self.height);
+        frame.set_pts(Some(timestamp));
+
+        let width = self.width as usize;
+        let height = self.height as usize;
+
+        let y_data = &data[..y_plane_size.min(data.len())];
+        let uv_data = if data.len() > y_plane_size {
+            &data[y_plane_size..]
+        } else {
+            &[]
+        };
+
+        let y_stride = frame.stride(0);
+        let y_dst = frame.data_mut(0);
+        for row in 0..height {
+            let src_start = row * width;
+            let src_end = (src_start + width).min(y_data.len());
+            if src_start >= y_data.len() {
+                break;
+            }
+            let dst_start = row * y_stride;
+            let copy_len = src_end - src_start;
+            if dst_start + copy_len <= y_dst.len() {
+                y_dst[dst_start..dst_start + copy_len]
+                    .copy_from_slice(&y_data[src_start..src_end]);
+            }
+        }
+
+        let uv_stride = frame.stride(1);
+        let uv_dst = frame.data_mut(1);
+        let uv_height = height / 2;
+        for row in 0..uv_height {
+            let src_start = row * width;
+            let src_end = (src_start + width).min(uv_data.len());
+            if src_start >= uv_data.len() {
+                break;
+            }
+            let dst_start = row * uv_stride;
+            let copy_len = src_end - src_start;
+            if dst_start + copy_len <= uv_dst.len() {
+                uv_dst[dst_start..dst_start + copy_len]
+                    .copy_from_slice(&uv_data[src_start..src_end]);
             }
         }
 

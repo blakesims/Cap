@@ -3,7 +3,7 @@ use std::time::Instant;
 use tokio::sync::oneshot;
 use wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
 
-use crate::{ProjectUniforms, RenderingError};
+use crate::{decoder::PixelFormat, ProjectUniforms, RenderingError};
 
 const GPU_BUFFER_WAIT_TIMEOUT_SECS: u64 = 30;
 
@@ -79,6 +79,8 @@ impl PendingReadback {
             height: self.height,
             frame_number: self.frame_number,
             target_time_ns,
+            pixel_format: PixelFormat::Rgba,
+            y_plane_size: None,
         })
     }
 }
@@ -338,6 +340,30 @@ pub struct RenderedFrame {
     pub padded_bytes_per_row: u32,
     pub frame_number: u32,
     pub target_time_ns: u64,
+    pub pixel_format: PixelFormat,
+    pub y_plane_size: Option<usize>,
+}
+
+impl RenderedFrame {
+    pub fn y_plane(&self) -> &[u8] {
+        match self.pixel_format {
+            PixelFormat::Rgba => &self.data,
+            PixelFormat::Nv12 => {
+                let size = self.y_plane_size.unwrap_or(self.data.len());
+                &self.data[..size]
+            }
+        }
+    }
+
+    pub fn uv_plane(&self) -> Option<&[u8]> {
+        match self.pixel_format {
+            PixelFormat::Rgba => None,
+            PixelFormat::Nv12 => {
+                let y_size = self.y_plane_size.unwrap_or(0);
+                Some(&self.data[y_size..])
+            }
+        }
+    }
 }
 
 // impl FramePipelineEncoder {
