@@ -3,12 +3,12 @@
 ## 0. Task Summary
 -  **Task Name:** Export Performance Optimization
 -  **Priority:** 3
--  **Number of Stories:** 5
--  **Current Status:** ACTIVE
+-  **Number of Stories:** 7 (S01-S02 ✅, S03-S04 ⚠️ Superseded, S05-S07 Planned)
+-  **Current Status:** ACTIVE - STRATEGIC PIVOT
 -  **Platform:** macOS only (Windows feasible as future task)
--  **Dependencies:** `crates/export/`, `crates/rendering/`, `crates/enc-ffmpeg/`, `crates/gpu-converters/`, `crates/frame-converter/`
+-  **Dependencies:** `crates/export/`, `crates/rendering/`, `crates/enc-ffmpeg/`, `crates/frame-converter/`
 -  **Rules Required:** CLAUDE.md (no comments, Rust clippy rules)
--  **Executor Ref:** See Stories S01-S05
+-  **Executor Ref:** See Stories S01-S07
 -  **Acceptance Criteria:**
     - Measurable export speed improvement (target: 35-55% faster for 4K)
     - No regression in output quality
@@ -17,20 +17,34 @@
     - All existing export tests pass
 
 ## 1. Goal / Objective
-Improve video export speed on macOS by addressing identified bottlenecks in the export pipeline, primarily by moving RGBA→NV12 format conversion to GPU before readback, and secondarily by optimizing buffer sizes with safety mechanisms.
+Improve video export speed on macOS by addressing identified bottlenecks in the export pipeline. ~~Primary approach: moving RGBA→NV12 format conversion to GPU before readback.~~ **REVISED**: Use Apple-native APIs (VideoToolbox) for format conversion or let encoder handle BGRA directly.
 
 ## 2. Overall Status
-Active development. Performance analysis complete. Code review complete. Bottlenecks identified and verified against codebase. Implementation in progress.
 
-### Current Architecture
+**⚠️ STRATEGIC PIVOT (2026-01-15)**: Custom WGSL GPU shader approach (S03/S04) abandoned after research confirmed it is architecturally flawed. New direction uses Apple-native APIs.
+
+### Current Architecture (Baseline: 43 fps)
 ```
-Decode (HW) → Render/Composite (GPU/RGBA) → GPU Readback (RGBA) → Format Convert (CPU ❌) → Encode (HW)
+Decode (HW) → Render/Composite (GPU/RGBA) → GPU Readback (RGBA) → Format Convert (CPU sws_scale ❌) → Encode (HW)
 ```
 
-### Target Architecture
+### ~~Original Target Architecture~~ (ABANDONED)
 ```
-Decode (HW) → Render/Composite (GPU/RGBA) → Format Convert (GPU ✅) → GPU Readback (NV12) → Encode (HW)
+Decode (HW) → Render/Composite (GPU/RGBA) → Format Convert (GPU WGSL ❌) → GPU Readback (NV12) → Encode (HW)
 ```
+**Why abandoned**: Custom GPU converter created 13x performance regression due to separate device/queue, blocking operations, and double readback. See Section 14 for details.
+
+### NEW Target Architecture (Apple-Native)
+```
+Option A: Decode (HW) → Render/Composite (GPU/RGBA) → GPU Readback (BGRA) → Encode (HW, accepts BGRA directly ✅)
+Option B: Decode (HW) → Render/Composite (GPU/RGBA) → GPU Readback (RGBA) → VTPixelTransfer (HW ✅) → Encode (HW)
+```
+
+### Performance Targets
+| Metric | Baseline | Target | Hardware Max |
+|--------|----------|--------|--------------|
+| Export FPS | 43 fps | 50-55 fps | ~60 fps |
+| Improvement | - | +16-28% | +40% |
 
 ### Identified Bottlenecks (Verified)
 1. **Primary**: CPU-based RGBA→NV12 conversion via FFmpeg software scaler (`h264.rs:241-289`)
@@ -48,9 +62,16 @@ Decode (HW) → Render/Composite (GPU/RGBA) → Format Convert (GPU ✅) → GPU
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | S01 | Increase channel buffer sizes (with safety) | Low | ~2h | ✅ Done | [S01-buffer-sizes.md](./stories/S01-buffer-sizes.md) |
 | S02 | Audit format conversion flow | Low | ~2h | ✅ Done | [S02-format-audit.md](./stories/S02-format-audit.md) |
-| S03 | Implement RGBAToNV12 GPU converter | Medium | ~4-6h | ✅ Done | [S03-rgba-nv12-converter.md](./stories/S03-rgba-nv12-converter.md) |
-| S04 | Integrate GPU conversion into frame pipeline | Medium-High | ~6-8h | ✅ Done | [S04-pipeline-integration.md](./stories/S04-pipeline-integration.md) |
-| S05 | Benchmark and validate improvements | Low | ~2h | Planned | Inline |
+| S03 | ~~Implement RGBAToNV12 GPU converter~~ | Medium | ~4-6h | ⚠️ Superseded | [S03-rgba-nv12-converter.md](./stories/S03-rgba-nv12-converter.md) |
+| S04 | ~~Integrate GPU conversion into frame pipeline~~ | Medium-High | ~6-8h | ⚠️ Superseded | [S04-pipeline-integration.md](./stories/S04-pipeline-integration.md) |
+| S05 | Test BGRA direct input to VideoToolbox encoder | Low | ~2h | 🆕 Planned | Inline |
+| S06 | Implement VTPixelTransferSession (if S05 insufficient) | Medium | ~4h | 🆕 Planned | Inline |
+| S07 | Benchmark and validate improvements | Low | ~2h | Planned | Inline |
+
+### Story Status Legend
+- ✅ Done - Completed and working
+- ⚠️ Superseded - Completed but approach abandoned (code disabled, kept for reference)
+- 🆕 Planned - New stories from strategic pivot
 
 ## 4. Story Details
 
@@ -112,100 +133,121 @@ Decode (HW) → Render/Composite (GPU/RGBA) → Format Convert (GPU ✅) → GPU
     - `crates/rendering/src/frame_pipeline.rs` - GPU readback
     - `crates/enc-ffmpeg/src/video/h264.rs:233-240` - `with_external_conversion` handling
 
-### S03 - Implement RGBAToNV12 GPU Converter
-**Complexity: Medium (~4-6h)**
+### S03 - ~~Implement RGBAToNV12 GPU Converter~~ ⚠️ SUPERSEDED
+**Status: SUPERSEDED** - Code complete but approach abandoned. See Section 14.
 
-**Rationale:** The `crates/gpu-converters/` already has infrastructure for GPU format conversion. We need to add RGBA→NV12 (the reverse of existing NV12→RGBA).
+**Original Rationale:** The `crates/gpu-converters/` already has infrastructure for GPU format conversion. We need to add RGBA→NV12 (the reverse of existing NV12→RGBA).
+
+**What was implemented:**
+- ✅ WGSL compute shader for RGBA→NV12 conversion (BT.709 color matrix)
+- ✅ Byte packing fix for correct NV12 output
+- ✅ Color output verified correct (no green tint after fix)
+
+**Why superseded:**
+- The shader itself works correctly
+- But integration architecture is fundamentally flawed (see S04)
+- Research confirmed Apple-native APIs are superior for macOS
+- Code kept in `crates/gpu-converters/src/rgba_nv12/` for reference (disabled by default)
+
+### S04 - ~~Integrate GPU Conversion into Frame Pipeline~~ ⚠️ SUPERSEDED
+**Status: SUPERSEDED** - Implementation caused 13x performance regression. See Section 14.
+
+**Original Rationale:** The key optimization is converting BEFORE GPU→CPU readback. This reduces bandwidth by ~60%.
+
+**What was implemented:**
+- ✅ Integration into `mp4.rs` render_task
+- ✅ Feature flag `CAP_GPU_FORMAT_CONVERSION` (default: disabled)
+- ✅ Color output verified correct after shader fix
+
+**Why superseded - CRITICAL ARCHITECTURAL FLAWS:**
+
+1. **Separate GPU Context**: Created new `wgpu::Device`/`Queue` instead of sharing with renderer
+2. **Blocking Operations**: `device.poll(Wait)` inside async task serialized ALL frame processing
+3. **Double Readback**: Read RGBA to CPU → Convert on GPU → Read NV12 to CPU (2x transfers!)
+4. **Result**: 13x performance regression (39s → 529s)
+
+**Research Conclusion:** The approach requires fundamental redesign that isn't worth the effort when Apple provides superior native APIs. See `research-questions-export-optimization.md` for full analysis.
+
+**Code Status:** Disabled by default (`CAP_GPU_FORMAT_CONVERSION=false`). Code preserved in:
+- `crates/gpu-converters/src/rgba_nv12/` - Shader and Rust wrapper
+- `crates/export/src/mp4.rs` - Integration (gated by env var)
+
+### S05 - Test BGRA Direct Input to VideoToolbox Encoder 🆕
+**Complexity: Low (~2h)** | **Status: Planned** | **Priority: HIGHEST**
+
+**Rationale:** Research confirmed VideoToolbox H.264 encoder can accept BGRA input directly. If this works, we skip format conversion entirely - the simplest possible solution.
 
 -   **Acceptance Criteria:**
-    -   [ ] New `RGBAToNV12` converter following existing pattern
-    -   [ ] Compute shader for RGBA→NV12 conversion (BT.709 color matrix)
-    -   [ ] Handles even dimension requirement (NV12 constraint)
-    -   [ ] Performance comparable to or better than CPU conversion
-    -   [ ] Fallback to CPU if GPU unavailable
+    -   [ ] Determine if FFmpeg's `h264_videotoolbox` accepts BGRA pixel format
+    -   [ ] Modify encoder configuration to use BGRA input
+    -   [ ] Verify output quality is identical to NV12 path
+    -   [ ] Measure performance improvement vs baseline
 
 -   **Tasks/Subtasks:**
-    -   [ ] Study existing `nv12_rgba/` converter as template
-    -   [ ] Create `rgba_nv12/` module in `crates/gpu-converters/`
-    -   [ ] Implement WGSL compute shader for RGBA→NV12
-    -   [ ] Handle Y plane (full res) and UV plane (half res, interleaved)
-    -   [ ] Add unit tests
-    -   [ ] Benchmark GPU vs CPU conversion time
+    -   [ ] Review `crates/enc-ffmpeg/src/video/h264.rs` encoder configuration
+    -   [ ] Test with `-pix_fmt bgra` or equivalent FFmpeg option
+    -   [ ] Check if `with_external_conversion(false)` enables internal BGRA→NV12
+    -   [ ] Benchmark: if encoder accepts BGRA, compare to CPU sws_scale baseline
+    -   [ ] Document findings
 
--   **Alternative Approach - VideoToolbox:**
-    -   [ ] Evaluate `VTPixelTransferSession` in `crates/frame-converter/src/videotoolbox.rs`
-    -   [ ] May be simpler and Apple-optimized
-    -   [ ] Trade-off: Less control vs. maintained by Apple
-    -   [ ] **Decision needed**: Custom shader vs VideoToolbox
+-   **Key Files:**
+    - `crates/enc-ffmpeg/src/video/h264.rs` - Encoder configuration
+    - `crates/media-info/src/lib.rs` - Frame wrapping
 
--   **Technical Notes:**
-    ```
-    NV12 Format:
-    - Y plane: width × height bytes (1 byte per pixel)
-    - UV plane: width × (height/2) bytes (interleaved U,V at half resolution)
-    - Total: 1.5 bytes per pixel (vs 4 for RGBA)
+-   **Expected Outcome:**
+    - If BGRA works: Task essentially complete with minimal code changes
+    - If BGRA doesn't work: Proceed to S06 (VTPixelTransferSession)
 
-    Conversion (BT.709):
-    Y  =  0.2126 R + 0.7152 G + 0.0722 B
-    Cb = -0.1146 R - 0.3854 G + 0.5000 B + 128
-    Cr =  0.5000 R - 0.4542 G - 0.0458 B + 128
-    ```
+---
 
--   **Existing Code to Reference:**
-    - `crates/gpu-converters/src/nv12_rgba/mod.rs` - Reverse conversion (NV12→RGBA)
-    - `crates/gpu-converters/src/nv12_rgba/shader.wgsl` - Shader example
-    - `crates/gpu-converters/src/uyvy_nv12/` - Another NV12 output example
+### S06 - Implement VTPixelTransferSession (Fallback) 🆕
+**Complexity: Medium (~4h)** | **Status: Planned** | **Priority: HIGH (if S05 fails)**
 
-### S04 - Integrate GPU Conversion into Frame Pipeline
-**Complexity: Medium-High (~6-8h)**
-
-**Rationale:** The key optimization is converting BEFORE GPU→CPU readback. This reduces bandwidth by ~60% (NV12 is 1.5 bytes/pixel vs RGBA at 4 bytes/pixel).
+**Rationale:** Apple's `VTPixelTransferSession` is a hardware-accelerated format converter. Already partially exists in `crates/frame-converter/src/videotoolbox.rs`.
 
 -   **Acceptance Criteria:**
-    -   [ ] `frame_pipeline.rs` supports NV12 output path
-    -   [ ] Conversion happens on GPU before readback
-    -   [ ] `PipelinedGpuReadback` handles NV12 buffers
-    -   [ ] H264Encoder receives NV12 directly (skip software converter)
-    -   [ ] Feature flag for easy rollback
-    -   [ ] Bandwidth reduction measurable (~40% less GPU→CPU data)
+    -   [ ] Rust FFI wrapper for `VTPixelTransferSession`
+    -   [ ] Replace `sws_scale` with `VTPixelTransferSessionTransferImage`
+    -   [ ] Verify output quality matches baseline
+    -   [ ] Measure performance improvement (target: 50+ fps)
 
 -   **Tasks/Subtasks:**
-    -   [ ] Add NV12 texture support to `frame_pipeline.rs`
-    -   [ ] Integrate `RGBAToNV12` converter after render, before readback
-    -   [ ] Update `PipelinedGpuReadback` buffer sizing for NV12 (smaller buffers)
-    -   [ ] Use `H264EncoderBuilder::with_external_conversion(true)` to skip software path
-    -   [ ] Add feature flag: `gpu-format-conversion` (default: enabled)
-    -   [ ] Ensure fallback to CPU conversion if GPU path fails
+    -   [ ] Review existing `crates/frame-converter/src/videotoolbox.rs`
+    -   [ ] Implement `VTPixelTransferSessionCreate` / `TransferImage` / `Invalidate`
+    -   [ ] Create NV12 `CVPixelBuffer` for destination
+    -   [ ] Integrate into `mp4.rs` export pipeline
+    -   [ ] Benchmark against CPU baseline
 
--   **Architecture Change:**
-    ```
-    Current:
-    GPU Render (RGBA) → Readback (RGBA, 4 bytes/px) → CPU Convert (RGBA→NV12) → Encode
+-   **API Usage (from research):**
+    ```c
+    VTPixelTransferSessionRef session;
+    VTPixelTransferSessionCreate(kCFAllocatorDefault, &session);
 
-    New:
-    GPU Render (RGBA) → GPU Convert (RGBA→NV12) → Readback (NV12, 1.5 bytes/px) → Encode
-    ```
+    // Per frame:
+    CVPixelBufferRef destNV12;
+    CVPixelBufferCreate(..., kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, &destNV12);
+    VTPixelTransferSessionTransferImage(session, sourceRGBA, destNV12, NULL);
+    // destNV12 now contains converted frame
 
--   **Key Files to Modify:**
-    - `crates/rendering/src/frame_pipeline.rs` - Add NV12 path
-    - `crates/export/src/mp4.rs` - Pass flag for external conversion
-    - `crates/enc-ffmpeg/src/video/h264.rs` - Verify external conversion works
-
--   **Memory Impact:**
-    ```
-    Current (RGBA):  32 frames × 4K × 4 bytes = 32 × 33MB = ~1GB readback buffers
-    New (NV12):      32 frames × 4K × 1.5 bytes = 32 × 12MB = ~400MB readback buffers
-    Savings: ~60% less memory for readback buffers
+    // Cleanup:
+    VTPixelTransferSessionInvalidate(session);
+    CFRelease(session);
     ```
 
-### S05 - Benchmark and Validate Improvements
-**Complexity: Low (~2h)**
+-   **Key Files:**
+    - `crates/frame-converter/src/videotoolbox.rs` - Existing VT wrapper
+    - `crates/export/src/mp4.rs` - Integration point
+
+---
+
+### S07 - Benchmark and Validate Improvements
+**Complexity: Low (~2h)** | **Status: Planned**
 
 -   **Acceptance Criteria:**
-    -   [ ] Baseline measurements documented (before changes)
+    -   [ ] Baseline measurements documented (43 fps / 39s for 1667 frames)
     -   [ ] Post-change measurements documented
-    -   [ ] Various test cases covered
-    -   [ ] Quality comparison completed
+    -   [ ] Target: 50-55 fps achieved
+    -   [ ] Quality comparison completed (no regression)
     -   [ ] Memory usage validated
 
 -   **Test Matrix:**
@@ -218,15 +260,18 @@ Decode (HW) → Render/Composite (GPU/RGBA) → Format Convert (GPU ✅) → GPU
 
 -   **Metrics to Capture:**
     - Export time (wall clock)
+    - Export FPS (frames / time)
     - CPU usage (% during export)
     - GPU usage (% during export)
     - Memory usage (peak)
     - Output file size (quality proxy)
     - Visual quality (spot check)
 
--   **Tools:**
-    - macOS: Instruments (Time Profiler, Metal System Trace)
-    - Existing tests: `crates/export/tests/export_benchmark.rs`
+-   **Success Criteria:**
+    | Metric | Baseline | Target | Result |
+    |--------|----------|--------|--------|
+    | Export FPS | 43 fps | 50-55 fps | TBD |
+    | Improvement | - | +16-28% | TBD |
 
 ## 5. Technical Considerations
 
@@ -476,4 +521,91 @@ The blocking architecture issue remains unsolved. Options:
 Color fix confirmed working on macOS:
 - ✅ Video output is correct (no green tint or artifacts)
 - ⚠️ Performance still degraded: 527.9s for 1667 frames (vs 39s without GPU conversion)
-- **Next step**: Fix blocking architecture to restore performance
+- ~~**Next step**: Fix blocking architecture to restore performance~~
+- **UPDATED**: Approach abandoned - see Section 14
+
+## 14. Strategic Pivot: Apple-Native APIs (2026-01-15)
+
+### Decision Summary
+
+**The custom WGSL GPU shader approach (S03/S04) is ABANDONED.**
+
+After comprehensive research (see `research-questions-export-optimization.md`), we determined:
+
+1. The custom GPU converter is **architecturally flawed** - not fixable with minor changes
+2. Apple provides **superior native alternatives** we weren't using
+3. The VideoToolbox encoder can **accept BGRA directly** - may not need conversion at all
+
+### Research Findings
+
+| Question | Answer |
+|----------|--------|
+| Is custom WGSL approach viable? | **NO** - requires fundamental redesign not worth the effort |
+| Can encoder accept BGRA directly? | **YES** - VideoToolbox H.264 accepts BGRA/RGBA input |
+| Is VTPixelTransferSession available? | **YES** - hardware-accelerated, already in codebase |
+| What's the theoretical max performance? | ~60 fps (currently 43 fps, ~40% headroom) |
+
+### Why Custom GPU Approach Failed
+
+1. **Separate GPU Context**: Created new `wgpu::Device`/`Queue` instead of sharing with renderer
+2. **Blocking Operations**: `device.poll(Wait)` inside async task serialized ALL frame processing
+3. **Double Readback**: RGBA GPU→CPU then NV12 GPU→CPU (defeated entire purpose)
+4. **Result**: 13x worse performance (39s → 529s)
+
+To fix this properly would require:
+- Merging GPU contexts (share device/queue with renderer)
+- Converting BEFORE readback (not after)
+- Async buffer mapping (no blocking)
+- This is essentially a complete rewrite with high risk
+
+### New Approach: Apple-Native APIs
+
+**Option 1 (HIGHEST PRIORITY): BGRA Direct Input**
+```
+GPU Render (RGBA) → GPU Readback (BGRA) → Encoder (accepts BGRA directly)
+```
+- If VideoToolbox accepts BGRA, we skip conversion entirely
+- Simplest possible solution
+- Test in S05
+
+**Option 2 (FALLBACK): VTPixelTransferSession**
+```
+GPU Render (RGBA) → GPU Readback (RGBA) → VTPixelTransfer (HW) → Encoder (NV12)
+```
+- Apple's hardware-accelerated format converter
+- Already exists in `crates/frame-converter/src/videotoolbox.rs`
+- Fast, zero-copy capable with proper CVPixelBuffer management
+- Implement in S06 if S05 insufficient
+
+### Code Disposition
+
+| Component | Location | Status |
+|-----------|----------|--------|
+| WGSL Shader | `crates/gpu-converters/src/rgba_nv12/shader.wgsl` | Preserved (disabled) |
+| Rust Wrapper | `crates/gpu-converters/src/rgba_nv12/mod.rs` | Preserved (disabled) |
+| Integration | `crates/export/src/mp4.rs` | Gated by `CAP_GPU_FORMAT_CONVERSION=false` |
+
+The code is kept for:
+- Reference for future Windows implementation (where VTPixelTransfer doesn't exist)
+- Educational value (working BT.709 RGBA→NV12 shader)
+- Potential future use if wgpu gains better CVPixelBuffer/IOSurface support
+
+### Updated Task Plan
+
+1. **S05** (NEXT): Test BGRA direct input - may solve everything with minimal code
+2. **S06** (IF NEEDED): Implement VTPixelTransferSession
+3. **S07**: Benchmark and validate 50-55 fps target achieved
+
+### Key Learnings
+
+1. **Platform-native APIs first**: Always evaluate OS-provided solutions before custom implementations
+2. **Architecture before optimization**: A fast algorithm with bad integration is slower than a slow algorithm with good integration
+3. **Research before coding**: The research document revealed answers in hours that would have taken days to discover through trial and error
+4. **Fail fast, pivot decisively**: Recognizing the 13x regression and pivoting saved significant wasted effort
+
+### References
+
+- `research-questions-export-optimization.md` - Comprehensive research with citations
+- `s04-investigation-report.md` - Technical investigation of failures
+- Apple WWDC: VideoToolbox and VTPixelTransferSession documentation
+- FFmpeg VideoToolbox overlay filter examples

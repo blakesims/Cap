@@ -1,9 +1,9 @@
 # S04 Investigation Report: GPU RGBA→NV12 Conversion Issues
 
-## Status: INVESTIGATION IN PROGRESS
+## Status: ⚠️ INVESTIGATION COMPLETE - APPROACH ABANDONED
 
 **Date**: 2026-01-15
-**Investigator**: [To be filled by subagent]
+**Conclusion**: Custom WGSL GPU shader approach is architecturally flawed. Pivot to Apple-native APIs.
 
 ---
 
@@ -13,7 +13,12 @@ S04 implementation of GPU-based RGBA→NV12 conversion resulted in:
 1. **13x performance regression** (39s → 529s for same export)
 2. **Video corruption** (green color filter, artifacts)
 
-**STATUS UPDATE (2026-01-15)**: Color corruption fix applied. See Section 7 for details.
+**FINAL STATUS (2026-01-15)**:
+- ✅ Color corruption fixed (shader byte packing corrected)
+- ❌ Performance regression NOT fixable without fundamental redesign
+- 🔄 **DECISION**: Abandon custom GPU approach, use Apple-native APIs instead
+
+See `research-questions-export-optimization.md` for comprehensive research findings that informed this decision.
 
 ---
 
@@ -506,3 +511,53 @@ Y  = 16 + 65.481×R + 128.553×G + 24.966×B
 Cb = 128 - 37.797×R - 74.203×G + 112×B
 Cr = 128 + 112×R - 93.786×G - 18.214×B
 ```
+
+---
+
+## 10. Final Conclusion (2026-01-15)
+
+### Decision: ABANDON Custom GPU Approach
+
+After thorough investigation and external research, the custom WGSL GPU shader approach is **abandoned** in favor of Apple-native APIs.
+
+### Rationale
+
+1. **Architectural Flaw is Fundamental**: The 13x performance regression stems from:
+   - Separate GPU context (device/queue)
+   - Blocking operations in async context
+   - Double GPU→CPU readback
+
+   Fixing this requires a complete rewrite, not incremental improvements.
+
+2. **Apple Provides Superior Alternatives**:
+   - VideoToolbox encoder can accept BGRA directly (no conversion needed)
+   - `VTPixelTransferSession` provides hardware-accelerated conversion
+   - Both are maintained by Apple and optimized for the platform
+
+3. **Cost/Benefit Analysis**:
+   - Custom GPU fix: High effort, high risk, medium gain
+   - Apple-native APIs: Low-medium effort, low risk, high gain
+
+### Code Disposition
+
+The custom GPU converter code is **preserved but disabled**:
+- `CAP_GPU_FORMAT_CONVERSION` defaults to `false`
+- Code remains in `crates/gpu-converters/src/rgba_nv12/` for reference
+- May be useful for Windows implementation (no VTPixelTransfer available)
+
+### Next Steps
+
+1. **S05**: Test BGRA direct input to VideoToolbox encoder
+2. **S06**: Implement `VTPixelTransferSession` if S05 insufficient
+3. **S07**: Benchmark and validate 50-55 fps target
+
+### Lessons Learned
+
+1. Always evaluate platform-native APIs before custom implementations
+2. Architecture matters more than algorithm speed
+3. Research before extensive coding saves time
+4. Fail fast, pivot decisively when approach is fundamentally flawed
+
+---
+
+**Investigation Complete. See `main.md` Section 14 for the strategic pivot details.**
