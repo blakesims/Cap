@@ -50,8 +50,8 @@ impl Mp4ExportSettings {
 
 fn gpu_conversion_enabled() -> bool {
     std::env::var("CAP_GPU_FORMAT_CONVERSION")
-        .map(|v| v != "0" && v.to_lowercase() != "false")
-        .unwrap_or(true)
+        .map(|v| v == "1" || v.to_lowercase() == "true")
+        .unwrap_or(false)
 }
 
 impl Mp4ExportSettings {
