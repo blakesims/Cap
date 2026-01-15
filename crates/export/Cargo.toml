@@ -14,6 +14,7 @@ cap-enc-ffmpeg = { path = "../enc-ffmpeg" }
 cap-enc-gif = { path = "../enc-gif" }
 cap-media-info = { path = "../media-info" }
 cap-gpu-converters = { path = "../gpu-converters" }
+cap-frame-converter = { path = "../frame-converter" }
 
 tokio.workspace = true
 tempfile = "3.12.0"

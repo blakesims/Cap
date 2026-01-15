@@ -20,6 +20,7 @@ const K_CV_PIXEL_FORMAT_TYPE_420_YP_CB_CR8_BI_PLANAR_VIDEO_RANGE: u32 = 0x343230
 const K_CV_PIXEL_FORMAT_TYPE_2VUY: u32 = 0x32767579;
 const K_CV_PIXEL_FORMAT_TYPE_32_BGRA: u32 = 0x42475241;
 const K_CV_PIXEL_FORMAT_TYPE_32_ARGB: u32 = 0x00000020;
+const K_CV_PIXEL_FORMAT_TYPE_32_RGBA: u32 = 0x52474241;
 
 #[link(name = "CoreFoundation", kind = "framework")]
 unsafe extern "C" {
@@ -110,6 +111,46 @@ pub struct VideoToolboxConverter {
 }
 
 impl VideoToolboxConverter {
+    pub fn new_rgba_to_nv12(width: u32, height: u32) -> Result<Self, ConvertError> {
+        let input_cv_format = K_CV_PIXEL_FORMAT_TYPE_32_RGBA;
+        let output_cv_format = K_CV_PIXEL_FORMAT_TYPE_420_YP_CB_CR8_BI_PLANAR_VIDEO_RANGE;
+
+        let mut session: VTPixelTransferSessionRef = ptr::null_mut();
+        let status = unsafe { VTPixelTransferSessionCreate(ptr::null(), &mut session) };
+
+        if status != 0 {
+            return Err(ConvertError::HardwareUnavailable(format!(
+                "VTPixelTransferSessionCreate failed with status: {status}"
+            )));
+        }
+
+        if session.is_null() {
+            return Err(ConvertError::HardwareUnavailable(
+                "VTPixelTransferSessionCreate returned null session".to_string(),
+            ));
+        }
+
+        tracing::debug!(
+            "[T002-S06] VideoToolbox converter initialized: RGBA {}x{} -> NV12",
+            width,
+            height
+        );
+
+        Ok(Self {
+            session: Mutex::new(SessionHandle(session)),
+            input_format: Pixel::RGBA,
+            input_cv_format,
+            output_format: Pixel::NV12,
+            output_cv_format,
+            input_width: width,
+            input_height: height,
+            output_width: width,
+            output_height: height,
+            conversion_count: AtomicU64::new(0),
+            verified_hardware: AtomicBool::new(false),
+        })
+    }
+
     pub fn new(config: ConversionConfig) -> Result<Self, ConvertError> {
         let input_cv_format = pixel_to_cv_format(config.input_format).ok_or(
             ConvertError::UnsupportedFormat(config.input_format, config.output_format),
@@ -278,6 +319,138 @@ impl VideoToolboxConverter {
         }
 
         Ok(())
+    }
+
+    fn extract_nv12_planes(
+        &self,
+        pixel_buffer: CVPixelBufferRef,
+    ) -> Result<(Vec<u8>, Vec<u8>), ConvertError> {
+        unsafe {
+            let lock_status = CVPixelBufferLockBaseAddress(pixel_buffer, 0);
+            if lock_status != K_CV_RETURN_SUCCESS {
+                return Err(ConvertError::ConversionFailed(format!(
+                    "CVPixelBufferLockBaseAddress failed: {lock_status}"
+                )));
+            }
+        }
+
+        let (y_plane, uv_plane) = unsafe {
+            let plane_count = CVPixelBufferGetPlaneCount(pixel_buffer);
+            if plane_count != 2 {
+                CVPixelBufferUnlockBaseAddress(pixel_buffer, 0);
+                return Err(ConvertError::ConversionFailed(format!(
+                    "Expected 2 planes for NV12, got {plane_count}"
+                )));
+            }
+
+            let y_ptr = CVPixelBufferGetBaseAddressOfPlane(pixel_buffer, 0);
+            let y_stride = CVPixelBufferGetBytesPerRowOfPlane(pixel_buffer, 0);
+            let y_height = CVPixelBufferGetHeightOfPlane(pixel_buffer, 0);
+
+            let uv_ptr = CVPixelBufferGetBaseAddressOfPlane(pixel_buffer, 1);
+            let uv_stride = CVPixelBufferGetBytesPerRowOfPlane(pixel_buffer, 1);
+            let uv_height = CVPixelBufferGetHeightOfPlane(pixel_buffer, 1);
+
+            let mut y_plane = Vec::with_capacity(self.output_width as usize * y_height);
+            let mut uv_plane = Vec::with_capacity(self.output_width as usize * uv_height);
+
+            for row in 0..y_height {
+                let src_row = y_ptr.add(row * y_stride);
+                let row_slice = std::slice::from_raw_parts(src_row, self.output_width as usize);
+                y_plane.extend_from_slice(row_slice);
+            }
+
+            for row in 0..uv_height {
+                let src_row = uv_ptr.add(row * uv_stride);
+                let row_slice = std::slice::from_raw_parts(src_row, self.output_width as usize);
+                uv_plane.extend_from_slice(row_slice);
+            }
+
+            CVPixelBufferUnlockBaseAddress(pixel_buffer, 0);
+
+            (y_plane, uv_plane)
+        };
+
+        Ok((y_plane, uv_plane))
+    }
+
+    pub fn convert_raw_rgba_to_nv12(
+        &self,
+        rgba_data: &[u8],
+        width: u32,
+        height: u32,
+        stride: usize,
+    ) -> Result<(Vec<u8>, Vec<u8>), ConvertError> {
+        let count = self.conversion_count.fetch_add(1, Ordering::Relaxed);
+
+        if count == 0 {
+            tracing::info!(
+                "[T002-S06] VideoToolbox converter first frame: RGBA {}x{} -> NV12",
+                width,
+                height
+            );
+        }
+
+        let mut pixel_buffer: CVPixelBufferRef = ptr::null_mut();
+
+        let base_address = rgba_data.as_ptr() as *mut c_void;
+
+        let status = unsafe {
+            CVPixelBufferCreateWithBytes(
+                ptr::null(),
+                width as usize,
+                height as usize,
+                K_CV_PIXEL_FORMAT_TYPE_32_RGBA,
+                base_address,
+                stride,
+                ptr::null(),
+                ptr::null(),
+                ptr::null(),
+                &mut pixel_buffer,
+            )
+        };
+
+        if status != K_CV_RETURN_SUCCESS {
+            return Err(ConvertError::ConversionFailed(format!(
+                "CVPixelBufferCreateWithBytes failed: {status}"
+            )));
+        }
+
+        let output_buffer = self.create_output_pixel_buffer()?;
+
+        let transfer_status = {
+            let session_guard = self.session.lock();
+            unsafe {
+                VTPixelTransferSessionTransferImage(session_guard.0, pixel_buffer, output_buffer)
+            }
+        };
+
+        unsafe {
+            CVPixelBufferRelease(pixel_buffer);
+        }
+
+        if transfer_status != 0 {
+            unsafe {
+                CVPixelBufferRelease(output_buffer);
+            }
+            return Err(ConvertError::ConversionFailed(format!(
+                "VTPixelTransferSessionTransferImage failed: {transfer_status}"
+            )));
+        }
+
+        if !self.verified_hardware.swap(true, Ordering::Relaxed) {
+            tracing::info!(
+                "[T002-S06] VideoToolbox VTPixelTransferSession succeeded - hardware acceleration confirmed"
+            );
+        }
+
+        let result = self.extract_nv12_planes(output_buffer);
+
+        unsafe {
+            CVPixelBufferRelease(output_buffer);
+        }
+
+        result
     }
 }
 
