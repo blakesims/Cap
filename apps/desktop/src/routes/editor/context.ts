@@ -207,6 +207,38 @@ export const [EditorContextProvider, useEditorContext] = createContextProvider(
 			normalizeProject(props.editorInstance.savedProjectConfig),
 		);
 
+		const findSegmentIndexAtTime = (time: number): number => {
+			if (!project.timeline) return -1;
+			const segments = project.timeline.segments;
+			let searchTime = time;
+			const index = segments.findIndex((segment) => {
+				const duration = (segment.end - segment.start) / segment.timescale;
+				if (searchTime > duration) {
+					searchTime -= duration;
+					return false;
+				}
+				return true;
+			});
+			return index;
+		};
+
+		const getSegmentAbsoluteTimes = (): Array<{
+			start: number;
+			end: number;
+			index: number;
+		}> => {
+			if (!project.timeline) return [];
+			const segments = project.timeline.segments;
+			let accumulated = 0;
+			return segments.map((segment, index) => {
+				const duration = (segment.end - segment.start) / segment.timescale;
+				const start = accumulated;
+				const end = accumulated + duration;
+				accumulated = end;
+				return { start, end, index };
+			});
+		};
+
 		const projectActions = {
 			splitClipSegment: (time: number) => {
 				setProject(
@@ -512,10 +544,10 @@ export const [EditorContextProvider, useEditorContext] = createContextProvider(
 				clearTimeout(projectSaveTimeout);
 				projectSaveTimeout = undefined;
 			}
-		if (editorState.playbackInterval !== null) {
-			clearInterval(editorState.playbackInterval);
-		}
-		void flushProjectConfig();
+			if (editorState.playbackInterval !== null) {
+				clearInterval(editorState.playbackInterval);
+			}
+			void flushProjectConfig();
 		});
 
 		createEffect(
@@ -758,14 +790,20 @@ export const [EditorContextProvider, useEditorContext] = createContextProvider(
 			stepFrames: (count: number) => {
 				const frameTime = 1 / 30;
 				const currentTime = editorState.previewTime ?? editorState.playbackTime;
-				const newTime = Math.max(0, Math.min(currentTime + count * frameTime, totalDuration()));
+				const newTime = Math.max(
+					0,
+					Math.min(currentTime + count * frameTime, totalDuration()),
+				);
 				setEditorState("playbackTime", newTime);
 				setEditorState("previewTime", null);
 			},
 
 			stepSeconds: (count: number) => {
 				const currentTime = editorState.previewTime ?? editorState.playbackTime;
-				const newTime = Math.max(0, Math.min(currentTime + count, totalDuration()));
+				const newTime = Math.max(
+					0,
+					Math.min(currentTime + count, totalDuration()),
+				);
 				setEditorState("playbackTime", newTime);
 				setEditorState("previewTime", null);
 			},
@@ -891,6 +929,146 @@ export const [EditorContextProvider, useEditorContext] = createContextProvider(
 					}
 				}
 				setEditorState("playing", false);
+			},
+
+			deleteSegmentAtPlayhead: () => {
+				const time = editorState.previewTime ?? editorState.playbackTime;
+				const segmentIndex = findSegmentIndexAtTime(time);
+				if (segmentIndex === -1) return;
+
+				const absoluteTimes = getSegmentAbsoluteTimes();
+				const seg = absoluteTimes[segmentIndex];
+				const segmentDuration = seg.end - seg.start;
+				const rippleStartTime = seg.start;
+
+				batch(() => {
+					projectActions.deleteClipSegment(segmentIndex);
+					editorActions.rippleAdjustOverlays(rippleStartTime, -segmentDuration);
+					setEditorState("playbackTime", rippleStartTime);
+					setEditorState("previewTime", null);
+				});
+			},
+
+			deleteInOutRegion: () => {
+				const inP = editorState.inPoint;
+				const outP = editorState.outPoint;
+				if (inP === null || outP === null) return;
+
+				const inTime = Math.min(inP, outP);
+				const outTime = Math.max(inP, outP);
+
+				const totalDurationBefore =
+					project.timeline?.segments.reduce(
+						(acc, s) => acc + (s.end - s.start) / s.timescale,
+						0,
+					) ?? 0;
+
+				batch(() => {
+					const initialTimes = getSegmentAbsoluteTimes();
+					if (initialTimes.length === 0) return;
+
+					const wouldDeleteAll = initialTimes.every(
+						(seg) => seg.start >= inTime && seg.end <= outTime,
+					);
+					if (wouldDeleteAll) return;
+
+					for (const seg of initialTimes) {
+						if (seg.start < inTime && seg.end > inTime) {
+							projectActions.splitClipSegment(inTime);
+							break;
+						}
+					}
+
+					const afterInSplit = getSegmentAbsoluteTimes();
+					for (const seg of afterInSplit) {
+						if (seg.start < outTime && seg.end > outTime) {
+							projectActions.splitClipSegment(outTime);
+							break;
+						}
+					}
+
+					const afterBothSplits = getSegmentAbsoluteTimes();
+					const toDelete: number[] = [];
+
+					for (const seg of afterBothSplits) {
+						if (seg.start >= inTime && seg.end <= outTime) {
+							toDelete.push(seg.index);
+						}
+					}
+
+					toDelete.sort((a, b) => b - a);
+					for (const idx of toDelete) {
+						projectActions.deleteClipSegment(idx);
+					}
+
+					const totalDurationAfter =
+						project.timeline?.segments.reduce(
+							(acc, s) => acc + (s.end - s.start) / s.timescale,
+							0,
+						) ?? 0;
+
+					const gapDuration = totalDurationBefore - totalDurationAfter;
+					const rippleStartTime = inTime;
+
+					editorActions.rippleAdjustOverlays(rippleStartTime, -gapDuration);
+					editorActions.clearInOut();
+					setEditorState("playbackTime", rippleStartTime);
+					setEditorState("previewTime", null);
+				});
+			},
+
+			rippleAdjustOverlays: (startTime: number, timeDelta: number) => {
+				if (timeDelta === 0) return;
+
+				batch(() => {
+					setProject(
+						"timeline",
+						"zoomSegments",
+						produce((segments) => {
+							if (!segments) return;
+							for (const seg of segments) {
+								if (seg.start >= startTime) {
+									seg.start += timeDelta;
+									seg.end += timeDelta;
+								} else if (seg.end > startTime) {
+									seg.end = Math.max(seg.start, seg.end + timeDelta);
+								}
+							}
+						}),
+					);
+
+					setProject(
+						"timeline",
+						"maskSegments",
+						produce((segments) => {
+							if (!segments) return;
+							for (const seg of segments) {
+								if (seg.start >= startTime) {
+									seg.start += timeDelta;
+									seg.end += timeDelta;
+								} else if (seg.end > startTime) {
+									seg.end = Math.max(seg.start, seg.end + timeDelta);
+								}
+							}
+						}),
+					);
+
+					setProject(
+						"timeline",
+						"textSegments",
+						produce((segments) => {
+							if (!segments) return;
+							for (const seg of segments) {
+								if (seg.start >= startTime) {
+									seg.start += timeDelta;
+									seg.end += timeDelta;
+								} else if (seg.end > startTime) {
+									seg.end = Math.max(seg.start, seg.end + timeDelta);
+								}
+							}
+						}),
+					);
+				});
 			},
 		};
 

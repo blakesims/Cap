@@ -4,7 +4,7 @@
 -  **Task Name:** Keyboard-Driven Editor
 -  **Priority:** 2
 -  **Number of Stories:** 6
--  **Current Status:** ACTIVE (4/6 stories complete)
+-  **Current Status:** ACTIVE (6/6 stories complete)
 -  **Platform:** macOS only
 -  **Estimated Effort:** 24-31 hours (3-4 days)
 -  **Dependencies:** `apps/desktop/src/routes/editor/`, `apps/desktop/src/routes/editor/Timeline/`, `apps/desktop/src/routes/editor/useEditorShortcuts.ts`
@@ -34,8 +34,8 @@ Planning phase complete. Prototype validated. Codebase reviewed. Ready for imple
 | S02 | Core keyboard bindings infrastructure | Medium | ~4-6h | **Done** | [S02-keyboard-bindings.md](./stories/S02-keyboard-bindings.md) |
 | S03 | Playhead navigation (frame step, boundary jump) | Low-Medium | ~3-4h | **Done** | [S03-playhead-navigation.md](./stories/S03-playhead-navigation.md) |
 | S04 | Playback speed control (frontend-only) | Medium | ~4-5h | **Done** | [S04-playback-speed.md](./stories/S04-playback-speed.md) |
-| S05 | IN/OUT points and marks with visual feedback | Low-Medium | ~3-4h | Planned | Inline |
-| S06 | Delete IN/OUT region (phased approach) | High | ~8-10h | Planned | Inline |
+| S05 | IN/OUT points and marks with visual feedback | Low-Medium | ~3-4h | **Done** | [S05-in-out-marks-visual.md](./stories/S05-in-out-marks-visual.md) |
+| S06 | Delete IN/OUT region (phased approach) | High | ~8-10h | **Done** | [S06-delete-in-out-region.md](./stories/S06-delete-in-out-region.md) |
 
 ## 4. Story Details
 

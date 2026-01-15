@@ -101,6 +101,17 @@ export function Timeline() {
 
 	const secsPerPixel = () => transform().zoom / (timelineBounds.width ?? 1);
 
+	const inOutRegion = () => {
+		const inP = editorState.inPoint;
+		const outP = editorState.outPoint;
+		if (inP === null || outP === null) return null;
+
+		const pos = transform().position;
+		const left = (Math.min(inP, outP) - pos) / secsPerPixel();
+		const right = (Math.max(inP, outP) - pos) / secsPerPixel();
+		return { left, width: right - left };
+	};
+
 	const trackState = () => editorState.timeline.tracks;
 	const sceneAvailable = () => meta().hasCamera && !project.camera.hide;
 	const trackOptions = () =>
@@ -477,6 +488,89 @@ export function Timeline() {
 							}
 						}}
 					>
+						<Show when={inOutRegion()}>
+							{(region) => (
+								<div
+									class="absolute pointer-events-none z-[6]"
+									style={{
+										left: `${TRACK_GUTTER + region().left}px`,
+										width: `${region().width}px`,
+										top: "0px",
+										bottom: "0px",
+										"background-color": "rgba(74, 158, 255, 0.15)",
+										"border-left": "2px solid rgb(107, 203, 119)",
+										"border-right": "2px solid rgb(226, 64, 64)",
+									}}
+								/>
+							)}
+						</Show>
+
+						<Show when={editorState.inPoint !== null}>
+							<div
+								class="absolute pointer-events-none z-[7]"
+								style={{
+									left: `${TRACK_GUTTER}px`,
+									transform: `translateX(${(editorState.inPoint! - transform().position) / secsPerPixel()}px)`,
+									top: "-20px",
+								}}
+							>
+								<div
+									class="px-1.5 py-0.5 rounded text-[10px] font-bold"
+									style={{
+										"background-color": "rgb(107, 203, 119)",
+										color: "#000",
+									}}
+									title={`IN: ${formatTime(editorState.inPoint!)}`}
+								>
+									I
+								</div>
+							</div>
+						</Show>
+
+						<Show when={editorState.outPoint !== null}>
+							<div
+								class="absolute pointer-events-none z-[7]"
+								style={{
+									left: `${TRACK_GUTTER}px`,
+									transform: `translateX(${(editorState.outPoint! - transform().position) / secsPerPixel()}px)`,
+									top: "-20px",
+								}}
+							>
+								<div
+									class="px-1.5 py-0.5 rounded text-[10px] font-bold"
+									style={{
+										"background-color": "rgb(226, 64, 64)",
+										color: "#fff",
+									}}
+									title={`OUT: ${formatTime(editorState.outPoint!)}`}
+								>
+									O
+								</div>
+							</div>
+						</Show>
+
+						<Show when={editorState.mark !== null}>
+							<div
+								class="absolute pointer-events-none z-[7]"
+								style={{
+									left: `${TRACK_GUTTER}px`,
+									transform: `translateX(${(editorState.mark! - transform().position) / secsPerPixel()}px)`,
+									top: "-20px",
+								}}
+							>
+								<div
+									class="px-1.5 py-0.5 rounded text-[10px] font-bold"
+									style={{
+										"background-color": "rgb(155, 89, 182)",
+										color: "#fff",
+									}}
+									title={`Mark: ${formatTime(editorState.mark!)}`}
+								>
+									M
+								</div>
+							</div>
+						</Show>
+
 						<div class="flex flex-col gap-2 min-h-full">
 							<TrackRow icon={trackIcons.clip}>
 								<ClipTrack
