@@ -18,8 +18,10 @@ usage() {
     echo "Commands:"
     echo "  sync      Sync with upstream and rebase blake/stable"
     echo "  build     Build release app"
-    echo "  install   Build and install to /Applications"
+    echo "  install   Build and install to /Applications (auto-tags)"
     echo "  launch    Launch app with proper stdout handling (for Raycast)"
+    echo "  versions  List installed build versions"
+    echo "  rollback  Rollback to a previous build version"
     echo "  pull      Just pull latest blake/stable (for servers)"
     echo "  status    Show branch status and pending changes"
     echo ""
@@ -89,6 +91,96 @@ install_app() {
     echo ""
     echo "==> Installed and signed! Signature info:"
     codesign -dv "$INSTALL_PATH" 2>&1 | grep -E "^(Identifier|Authority|TeamIdentifier)="
+
+    tag_build
+}
+
+tag_build() {
+    local date_tag
+    date_tag="build/$(date +%Y-%m-%d)"
+    local counter=1
+    local final_tag="$date_tag"
+
+    while git rev-parse "$final_tag" >/dev/null 2>&1; do
+        counter=$((counter + 1))
+        final_tag="${date_tag}.${counter}"
+    done
+
+    git tag -a "$final_tag" -m "Build installed on $(date)"
+    echo ""
+    echo "==> Tagged as: $final_tag"
+    echo "    To rollback: ./scripts/fork-update.sh rollback $final_tag"
+}
+
+list_versions() {
+    echo "==> Available build versions:"
+    echo ""
+    git tag -l 'build/*' --sort=-creatordate | while read -r tag; do
+        local commit
+        commit=$(git rev-list -n 1 "$tag" 2>/dev/null)
+        local date
+        date=$(git log -1 --format=%ci "$tag" 2>/dev/null | cut -d' ' -f1)
+        local subject
+        subject=$(git log -1 --format=%s "$commit" 2>/dev/null)
+        printf "  %-20s %s  %s\n" "$tag" "$date" "$subject"
+    done
+    echo ""
+    echo "To rollback: ./scripts/fork-update.sh rollback <version>"
+}
+
+rollback_to() {
+    local version="${1:-}"
+
+    if [ -z "$version" ]; then
+        echo "Usage: $0 rollback <version>"
+        echo ""
+        echo "Available versions:"
+        git tag -l 'build/*' --sort=-creatordate | head -10
+        exit 1
+    fi
+
+    if ! git rev-parse "$version" >/dev/null 2>&1; then
+        echo "Error: Version '$version' not found"
+        echo ""
+        echo "Available versions:"
+        git tag -l 'build/*' --sort=-creatordate | head -10
+        exit 1
+    fi
+
+    echo "==> Rolling back to $version..."
+    git checkout "$version"
+
+    echo "==> Rebuilding..."
+    build_release
+
+    echo "==> Removing old app..."
+    rm -rf "$INSTALL_PATH"
+
+    echo "==> Installing to /Applications..."
+    ditto "$BUILD_PATH" "$INSTALL_PATH"
+
+    echo "==> Removing quarantine flags..."
+    xattr -cr "$INSTALL_PATH" || true
+
+    echo "==> Re-signing..."
+    if [ -d "$INSTALL_PATH/Contents/Frameworks/Spacedrive.framework" ]; then
+        find "$INSTALL_PATH/Contents/Frameworks/Spacedrive.framework" -name "*.dylib" \
+            -exec codesign --force --sign "$SIGNING_IDENTITY" --timestamp=none {} \;
+        codesign --force --sign "$SIGNING_IDENTITY" --timestamp=none \
+            "$INSTALL_PATH/Contents/Frameworks/Spacedrive.framework"
+    fi
+    find "$INSTALL_PATH/Contents/Frameworks" -type f \( -name "*.dylib" -o -name "*.so" \) \
+        -exec codesign --force --sign "$SIGNING_IDENTITY" --timestamp=none {} \; 2>/dev/null || true
+    find "$INSTALL_PATH/Contents/Frameworks" -type d -name "*.framework" \
+        -exec codesign --force --sign "$SIGNING_IDENTITY" --timestamp=none {} \; 2>/dev/null || true
+    codesign --force --sign "$SIGNING_IDENTITY" --timestamp=none "$INSTALL_PATH"
+
+    echo "==> Verifying signature..."
+    codesign --verify --deep --strict --verbose=2 "$INSTALL_PATH"
+
+    echo ""
+    echo "==> Rolled back to $version"
+    echo "    To return to latest: git checkout blake/stable && ./scripts/fork-update.sh install"
 }
 
 launch_app() {
@@ -140,6 +232,12 @@ case "${1:-}" in
         ;;
     launch)
         launch_app
+        ;;
+    versions)
+        list_versions
+        ;;
+    rollback)
+        rollback_to "${2:-}"
         ;;
     pull)
         pull_latest

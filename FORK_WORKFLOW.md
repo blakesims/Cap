@@ -130,6 +130,20 @@ Or update your Raycast script to call this instead of `open`.
 ./scripts/fork-update.sh pull      # Pull latest (for server)
 ```
 
+## Versioning & Rollback
+
+Each `install` auto-tags the commit (e.g., `build/2026-01-15`). To rollback if something breaks:
+
+```bash
+./scripts/fork-update.sh versions              # List available versions
+./scripts/fork-update.sh rollback build/2026-01-14   # Rollback to specific version
+```
+
+To return to latest after rollback:
+```bash
+git checkout blake/stable && ./scripts/fork-update.sh install
+```
+
 ## Remotes Setup
 
 ```bash
