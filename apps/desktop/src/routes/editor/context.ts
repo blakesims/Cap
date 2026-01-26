@@ -274,17 +274,15 @@ export const [EditorContextProvider, useEditorContext] = createContextProvider(
 					}),
 				);
 			},
-			deleteClipSegment: (segmentIndex: number) => {
-				if (!project.timeline) return;
+			deleteClipSegment: (
+				segmentIndex: number,
+			): { blocked: boolean; reason?: string } => {
+				if (!project.timeline) return { blocked: true, reason: "no_timeline" };
 				const segment = project.timeline.segments[segmentIndex];
-				if (
-					!segment ||
-					!segment.recordingSegment === undefined ||
-					project.timeline.segments.filter(
-						(s) => s.recordingSegment === segment.recordingSegment,
-					).length < 2
-				)
-					return;
+				if (!segment) return { blocked: true, reason: "segment_not_found" };
+				if (project.timeline.segments.length < 2) {
+					return { blocked: true, reason: "cannot_delete_last_segment" };
+				}
 
 				batch(() => {
 					setProject(
@@ -297,6 +295,7 @@ export const [EditorContextProvider, useEditorContext] = createContextProvider(
 					);
 					setEditorState("timeline", "selection", null);
 				});
+				return { blocked: false };
 			},
 			splitZoomSegment: (index: number, time: number) => {
 				setProject(
@@ -938,11 +937,15 @@ export const [EditorContextProvider, useEditorContext] = createContextProvider(
 
 				const absoluteTimes = getSegmentAbsoluteTimes();
 				const seg = absoluteTimes[segmentIndex];
+				if (!seg) return;
+
 				const segmentDuration = seg.end - seg.start;
 				const rippleStartTime = seg.start;
 
+				const result = projectActions.deleteClipSegment(segmentIndex);
+				if (result.blocked) return;
+
 				batch(() => {
-					projectActions.deleteClipSegment(segmentIndex);
 					editorActions.rippleAdjustOverlays(rippleStartTime, -segmentDuration);
 					setEditorState("playbackTime", rippleStartTime);
 					setEditorState("previewTime", null);
@@ -1010,6 +1013,19 @@ export const [EditorContextProvider, useEditorContext] = createContextProvider(
 					const gapDuration = totalDurationBefore - totalDurationAfter;
 					const rippleStartTime = inTime;
 
+					setProject("timeline", "zoomSegments", (segments) =>
+						segments.filter((s) => !(s.start >= inTime && s.end <= outTime)),
+					);
+					setProject("timeline", "maskSegments", (segments) =>
+						segments.filter((s) => !(s.start >= inTime && s.end <= outTime)),
+					);
+					setProject("timeline", "textSegments", (segments) =>
+						segments.filter((s) => !(s.start >= inTime && s.end <= outTime)),
+					);
+					setProject("timeline", "sceneSegments", (segments) =>
+						segments?.filter((s) => !(s.start >= inTime && s.end <= outTime)),
+					);
+
 					editorActions.rippleAdjustOverlays(rippleStartTime, -gapDuration);
 					editorActions.clearInOut();
 					setEditorState("playbackTime", rippleStartTime);
@@ -1056,6 +1072,22 @@ export const [EditorContextProvider, useEditorContext] = createContextProvider(
 					setProject(
 						"timeline",
 						"textSegments",
+						produce((segments) => {
+							if (!segments) return;
+							for (const seg of segments) {
+								if (seg.start >= startTime) {
+									seg.start += timeDelta;
+									seg.end += timeDelta;
+								} else if (seg.end > startTime) {
+									seg.end = Math.max(seg.start, seg.end + timeDelta);
+								}
+							}
+						}),
+					);
+
+					setProject(
+						"timeline",
+						"sceneSegments",
 						produce((segments) => {
 							if (!segments) return;
 							for (const seg of segments) {

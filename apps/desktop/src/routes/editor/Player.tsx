@@ -28,7 +28,7 @@ import {
 	Slider,
 	topLeftAnimateClasses,
 } from "./ui";
-import { useEditorShortcuts, isInputFocused } from "./useEditorShortcuts";
+import { isInputFocused, useEditorShortcuts } from "./useEditorShortcuts";
 import { formatTime } from "./utils";
 
 function SpeedIndicator(props: { speed: 1 | 2 | 4 | 8; playing: boolean }) {
@@ -195,6 +195,14 @@ export function PlayerContent() {
 		}
 	};
 
+	const handleDelete = () => {
+		if (editorState.inPoint !== null && editorState.outPoint !== null) {
+			editorActions.deleteInOutRegion();
+		} else {
+			editorActions.deleteSegmentAtPlayhead();
+		}
+	};
+
 	const handleDeleteSelection = () => {
 		const selection = editorState.timeline.selection;
 		if (!selection) return;
@@ -270,37 +278,15 @@ export function PlayerContent() {
 			},
 			{
 				combo: "Backspace",
-				handler: () => {
-					if (editorState.timeline.selection !== null) {
-						handleDeleteSelection();
-					} else if (
-						editorState.inPoint !== null &&
-						editorState.outPoint !== null
-					) {
-						editorActions.deleteInOutRegion();
-					} else {
-						editorActions.deleteSegmentAtPlayhead();
-					}
-				},
+				handler: handleDelete,
 			},
 			{
 				combo: "X",
-				handler: () => {
-					if (editorState.timeline.selection !== null) {
-						handleDeleteSelection();
-					} else if (
-						editorState.inPoint !== null &&
-						editorState.outPoint !== null
-					) {
-						editorActions.deleteInOutRegion();
-					} else {
-						editorActions.deleteSegmentAtPlayhead();
-					}
-				},
+				handler: handleDelete,
 			},
 			{
 				combo: "Delete",
-				handler: handleDeleteSelection,
+				handler: handleDelete,
 			},
 			{
 				combo: "Escape",

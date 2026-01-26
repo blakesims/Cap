@@ -124,7 +124,7 @@ toast("Cannot delete the only remaining segment");
 
 | Story ID | Story Name / Objective | Complexity | Est. Hours | Status |
 | :--- | :--- | :--- | :--- | :--- |
-| S01 | Core Deletion Logic Fix | Medium | ~3-4h | Planned |
+| S01 | Core Deletion Logic Fix | Medium | ~3-4h | **Done** |
 | S02 | User Feedback & Visual State | Medium | ~3-4h | Planned |
 | S03 | Keyboard Shortcuts Help | Low | ~2h | Planned |
 
@@ -137,12 +137,13 @@ toast("Cannot delete the only remaining segment");
 **Objective:** Fix all deletion-related bugs so segments can be deleted reliably.
 
 #### Acceptance Criteria
-- [ ] Any segment can be deleted as long as 1+ segment remains after deletion
-- [ ] Delete, Backspace, and X keys all behave identically
-- [ ] Deletion priority: IN/OUT region → Segment at playhead
-- [ ] IN/OUT deletion removes overlay segments (zoom/mask/text) fully contained within the region
-- [ ] Playhead moves to start of deleted region after deletion
-- [ ] IN/OUT points cleared after IN/OUT deletion
+- [x] Any segment can be deleted as long as 1+ segment remains after deletion
+- [x] Delete, Backspace, and X keys all behave identically
+- [x] Deletion priority: IN/OUT region → Segment at playhead
+- [x] IN/OUT deletion removes overlay segments (zoom/mask/text/scene) fully contained within the region
+- [x] Playhead moves to start of deleted region after deletion
+- [x] IN/OUT points cleared after IN/OUT deletion
+- [x] ConfigSidebar delete button uses new constraint
 
 #### Technical Changes
 
