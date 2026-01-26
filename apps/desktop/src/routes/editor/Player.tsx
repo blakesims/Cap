@@ -363,7 +363,7 @@ export function PlayerContent() {
 				handler: () => editorActions.pause(),
 			},
 			{
-				combo: "Shift+/",
+				combo: "Shift+?",
 				handler: () => setShowShortcutsModal(true),
 			},
 		],
