@@ -4,7 +4,7 @@
 -  **Task Name:** Editor Playback Improvements
 -  **Priority:** 2
 -  **Number of Stories:** 2
--  **Current Status:** COMPLETED
+-  **Current Status:** ACTIVE
 -  **Platform:** macOS
 -  **Dependencies:** `crates/editor/`, `apps/desktop/src/routes/editor/`
 -  **Rules Required:** CLAUDE.md
@@ -18,7 +18,7 @@ Fix two editor UX issues: (1) timeline doesn't follow the playhead, requiring ma
 ## 2. Overall Status
 **S02 COMPLETED (2026-01-26)**: Audio latency reduced from ~7 seconds to ~120ms (98% improvement) via background pre-decoding at output device sample rate.
 
-S01 remains planned for future work.
+**S01 IN PROGRESS (2026-01-26)**: Auto-scroll timeline implementation.
 
 ---
 
@@ -26,7 +26,7 @@ S01 remains planned for future work.
 
 | Story ID | Story Name / Objective | Complexity | Est. Hours | Status |
 | :--- | :--- | :--- | :--- | :--- |
-| S01 | Auto-scroll timeline to keep playhead visible | Medium | TBD | Planned |
+| S01 | Auto-scroll timeline to keep playhead visible | Low | 1 | In Progress |
 | S02 | Fix audio playback latency | High | 8 | ✅ COMPLETED |
 
 ---
@@ -38,17 +38,28 @@ S01 remains planned for future work.
 **Problem:** When navigating with keyboard (w/b, h/l) or during playback, the playhead can move outside the visible viewport. User must manually scroll.
 
 **Desired Behavior:**
-- When playhead exits visible viewport, auto-scroll so playhead is ~1/3 from left edge
+- When playhead exits visible viewport, jump viewport so playhead is at 1/3 from left edge
+- This gives ~2/3 of viewport as "runway" before next jump needed
 - Should work during: keyboard navigation, playback, segment jumps
+- Instant jump (no animation)
 
-**Key Files to Investigate:**
+**Key Files:**
 - `apps/desktop/src/routes/editor/context.ts` - `editorState.timeline.transform` (zoom, position)
-- `apps/desktop/src/routes/editor/Timeline/index.tsx` - viewport calculations
 
-**Approach (estimated):**
-- Add `createEffect` watching `playbackTime`
-- Calculate if out of bounds: `playbackTime < position || playbackTime > position + zoom`
-- If so, set `position = playbackTime - (zoom * 0.33)`
+**Implementation Plan:**
+
+1. Add `createEffect` in `EditorContextProvider` watching `playbackTime`
+2. Check if playhead is outside visible range:
+   - `playbackTime < position` (scrolled left of view)
+   - `playbackTime > position + zoom` (scrolled right of view)
+3. If out of bounds, reposition viewport:
+   - `newPosition = playbackTime - (zoom * 0.33)`
+   - Clamp to valid range: `max(0, min(newPosition, totalDuration - zoom))`
+4. Use `transform.setPosition()` to apply (already handles clamping)
+
+**Edge Cases:**
+- Near video start: position clamps to 0, playhead may be closer to left edge
+- Near video end: position clamps so viewport doesn't extend past end
 
 ---
 
