@@ -9,7 +9,7 @@ Tracks all non-archived work (PLANNING, ACTIVE, PAUSED, ONGOING). Completed item
 | T001 | Keyboard-Driven Editor | 2 | 6/6 | ACTIVE | context.ts, useEditorShortcuts.ts, Timeline, Player | CLAUDE.md | [main.md](./active/T001-keyboard-driven-editor/main.md) |
 | T002 | CLI Export Queue System | 3 | 0/5 | PLANNING | apps/cli/, crates/export/ | CLAUDE.md | [main.md](./planning/T002-cli-export-queue/main.md) |
 | T003 | Segment Deletion UX Improvements | 2 | 3/3 | COMPLETED | context.ts, Player.tsx, ClipTrack.tsx, ConfigSidebar.tsx | CLAUDE.md | [main.md](./completed/T003-segment-deletion-ux/main.md) |
-| T004 | Editor Playback Improvements | 2 | 1/2 | ACTIVE | crates/editor/, apps/desktop/src/routes/editor/ | CLAUDE.md | [main.md](./active/T004-editor-playback-improvements/main.md) |
+| T004 | Editor Playback Improvements | 2 | 2/2 | COMPLETED | crates/editor/, apps/desktop/src/routes/editor/ | CLAUDE.md | [main.md](./completed/T004-editor-playback-improvements/main.md) |
 
 Next available task id: T005
 (When a new task is created, increment this in the same change.)

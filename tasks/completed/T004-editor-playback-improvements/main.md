@@ -4,21 +4,21 @@
 -  **Task Name:** Editor Playback Improvements
 -  **Priority:** 2
 -  **Number of Stories:** 2
--  **Current Status:** ACTIVE
+-  **Current Status:** COMPLETED
 -  **Platform:** macOS
 -  **Dependencies:** `crates/editor/`, `apps/desktop/src/routes/editor/`
 -  **Rules Required:** CLAUDE.md
 -  **Acceptance Criteria:**
-    - Timeline auto-scrolls to keep playhead visible during navigation/playback
+    - ✅ Timeline auto-scrolls to keep playhead visible during navigation/playback
     - ✅ Audio playback starts immediately when pressing play (reduced from 7s to ~120ms)
 
 ## 1. Goal / Objective
 Fix two editor UX issues: (1) timeline doesn't follow the playhead, requiring manual scrolling; (2) audio has significant latency on playback start while video plays immediately.
 
 ## 2. Overall Status
-**S02 COMPLETED (2026-01-26)**: Audio latency reduced from ~7 seconds to ~120ms (98% improvement) via background pre-decoding at output device sample rate.
+**S01 COMPLETED (2026-01-26)**: Auto-scroll timeline to keep playhead visible via reactive effect.
 
-**S01 IN PROGRESS (2026-01-26)**: Auto-scroll timeline implementation.
+**S02 COMPLETED (2026-01-26)**: Audio latency reduced from ~7 seconds to ~120ms (98% improvement) via background pre-decoding at output device sample rate.
 
 ---
 
@@ -26,7 +26,7 @@ Fix two editor UX issues: (1) timeline doesn't follow the playhead, requiring ma
 
 | Story ID | Story Name / Objective | Complexity | Est. Hours | Status |
 | :--- | :--- | :--- | :--- | :--- |
-| S01 | Auto-scroll timeline to keep playhead visible | Low | 1 | In Progress |
+| S01 | Auto-scroll timeline to keep playhead visible | Low | 1 | ✅ COMPLETED |
 | S02 | Fix audio playback latency | High | 8 | ✅ COMPLETED |
 
 ---
