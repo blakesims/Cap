@@ -635,6 +635,30 @@ export const [EditorContextProvider, useEditorContext] = createContextProvider(
 			),
 		);
 
+		createEffect(
+			on(
+				() => editorState.playbackTime,
+				(playbackTime) => {
+					const transform = editorState.timeline.transform;
+					const position = transform.position;
+					const zoom = transform.zoom;
+
+					const isBeforeView = playbackTime < position;
+					const isAfterView = playbackTime > position + zoom;
+
+					if (isBeforeView || isAfterView) {
+						const targetOffset = zoom * 0.33;
+						const newPosition = Math.max(0, playbackTime - targetOffset);
+
+						if (Math.abs(newPosition - position) > 0.01) {
+							transform.setPosition(newPosition);
+						}
+					}
+				},
+				{ defer: true },
+			),
+		);
+
 		const totalDuration = () =>
 			project.timeline?.segments.reduce(
 				(acc, s) => acc + (s.end - s.start) / s.timescale,
