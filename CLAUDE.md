@@ -359,6 +359,13 @@ Minimize `useEffect` usage: compute during render, handle logic in event handler
 - IPC: Call generated `commands` and `events` from `tauri_specta`. Listen directly to generated events and prefer the typed interfaces.
 - Windowing/permissions are handled in Rust; keep UI logic in Solid and avoid mixing IPC with rendering logic.
 
+### Desktop Editor Patterns
+- **State separation**: `projectActions` mutates saved project config; `editorActions` handles session state (playback, markers, selection). Never mix them.
+- **Keyboard shortcuts**: Register shifted symbols by actual char (`Shift+?` not `Shift+/`). The `normalizeCombo()` function uses `e.key`, not `e.code`.
+- **Toasts**: Use `solid-toast` (already installed). Import: `import toast from "solid-toast"`. Toaster is mounted in `App.tsx`.
+- **Timeline segments**: `recordingSegment` property = pause/resume chunk index. Each pause/resume creates a new chunk with incrementing index.
+- **Selection types**: `editorState.timeline.selection` has types: `clip`, `zoom`, `mask`, `text`, `scene`. Always check `.type` before accessing `.indices`.
+
 ## Conventions
 - **CRITICAL: NO CODE COMMENTS**: Never add any form of comments to code. This includes:
   - Single-line comments: `//` (JavaScript/TypeScript/Rust), `#` (Python/Shell)

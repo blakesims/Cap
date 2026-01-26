@@ -42,9 +42,4 @@ When a Story doc exists:
 -    COMPLETED → `tasks/completed/`
 -    ARCHIVED → `tasks/archived/`
 
-When status changes, move the task folder to the matching directory and update the GTM row (status + link).
-
-Important: Tasks must be continuously updated in their directory.
-Eg. create the task in `./tasks/planning/` and move to `./tasks/active/` when started working on it.
-Once completed move into `./tasks/completed/`.
-Make sure the `./tasks/global-task-manager.md` is kept up-to-date.
+Status change: move folder to matching directory, update GTM row (status + link).
