@@ -4,7 +4,7 @@
 -  **Task Name:** Segment Deletion UX Improvements
 -  **Priority:** 2
 -  **Number of Stories:** 3
--  **Current Status:** PLANNING
+-  **Current Status:** COMPLETED
 -  **Platform:** macOS only
 -  **Dependencies:** `apps/desktop/src/routes/editor/context.ts`, `apps/desktop/src/routes/editor/Player.tsx`, `apps/desktop/src/routes/editor/Timeline/ClipTrack.tsx`
 -  **Rules Required:** CLAUDE.md (no comments, use existing patterns)
@@ -21,7 +21,7 @@
 Fix the broken segment deletion behavior in the Cap desktop editor. The core issue is a constraint that prevents deleting pause/resume recording segments. Users should be able to easily delete "bad takes" from a recording session without manual workarounds.
 
 ## 2. Overall Status
-Research complete. Root cause identified. Plan reviewed by subagent. Ready for implementation.
+All 3 stories implemented and committed. Task complete.
 
 ---
 
