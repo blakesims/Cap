@@ -542,6 +542,10 @@ export function ClipTrack(
 								)}
 								innerClass="ring-blue-9"
 								segment={relativeSegment()}
+								style={{
+									outline: isSelected() ? "2px solid #3b82f6" : "none",
+									"outline-offset": "-2px",
+								}}
 								onMouseDown={(e) => {
 									e.stopPropagation();
 

@@ -125,7 +125,7 @@ toast("Cannot delete the only remaining segment");
 | Story ID | Story Name / Objective | Complexity | Est. Hours | Status |
 | :--- | :--- | :--- | :--- | :--- |
 | S01 | Core Deletion Logic Fix | Medium | ~3-4h | **Done** |
-| S02 | User Feedback & Visual State | Medium | ~3-4h | Planned |
+| S02 | User Feedback & Visual State | Medium | ~3-4h | **Done** |
 | S03 | Keyboard Shortcuts Help | Low | ~2h | Planned |
 
 ---
@@ -292,11 +292,11 @@ disabled={(project.timeline?.segments.length ?? 0) < 2}
 **Objective:** Give users clear feedback when actions are blocked and clear indication of selection state.
 
 #### Acceptance Criteria
-- [ ] Toast notification appears when deletion is blocked
-- [ ] Toast explains why deletion was blocked
-- [ ] Toast auto-dismisses after 3 seconds
-- [ ] Selected segments have visible border/highlight
-- [ ] Selection is visually distinct from hover state
+- [x] Toast notification appears when deletion is blocked
+- [x] Toast explains why deletion was blocked
+- [x] Toast auto-dismisses (solid-toast default)
+- [x] Selected segments have visible border/highlight (blue outline)
+- [x] Selection is visually distinct from hover state
 
 #### Technical Changes
 

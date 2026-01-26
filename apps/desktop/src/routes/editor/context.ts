@@ -19,6 +19,7 @@ import {
 	onCleanup,
 } from "solid-js";
 import { createStore, produce, reconcile, unwrap } from "solid-js/store";
+import toast from "solid-toast";
 
 import { generalSettingsStore } from "~/store";
 
@@ -943,7 +944,12 @@ export const [EditorContextProvider, useEditorContext] = createContextProvider(
 				const rippleStartTime = seg.start;
 
 				const result = projectActions.deleteClipSegment(segmentIndex);
-				if (result.blocked) return;
+				if (result.blocked) {
+					if (result.reason === "cannot_delete_last_segment") {
+						toast.error("Cannot delete the only remaining segment");
+					}
+					return;
+				}
 
 				batch(() => {
 					editorActions.rippleAdjustOverlays(rippleStartTime, -segmentDuration);
