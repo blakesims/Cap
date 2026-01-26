@@ -1,3 +1,4 @@
+use arc_swap::ArcSwap;
 use cap_audio::FromSampleBytes;
 #[cfg(not(target_os = "windows"))]
 use cap_audio::{LatencyCorrectionConfig, LatencyCorrector, default_output_latency_hint};
@@ -31,7 +32,10 @@ use tracing::{error, info, warn};
 #[cfg(not(target_os = "windows"))]
 use crate::audio::AudioPlaybackBuffer;
 use crate::{
-    audio::AudioSegment, editor, editor_instance::SegmentMedia, segments::get_audio_segments,
+    audio::{AudioSegment, PredecodedAudio},
+    editor,
+    editor_instance::SegmentMedia,
+    segments::get_audio_segments,
 };
 
 const PREFETCH_BUFFER_SIZE: usize = 60;
@@ -51,6 +55,7 @@ pub struct Playback {
     pub start_frame_number: u32,
     pub project: watch::Receiver<ProjectConfiguration>,
     pub segment_medias: Arc<Vec<SegmentMedia>>,
+    pub predecoded_audio: Arc<ArcSwap<Option<PredecodedAudio>>>,
 }
 
 #[derive(Clone, Copy)]
@@ -374,6 +379,7 @@ impl Playback {
                 fps,
                 playhead_rx: audio_playhead_rx,
                 duration_secs: duration,
+                predecoded_audio: self.predecoded_audio.clone(),
             }
             .spawn();
 
@@ -756,6 +762,7 @@ struct AudioPlayback {
     fps: u32,
     playhead_rx: watch::Receiver<f64>,
     duration_secs: f64,
+    predecoded_audio: Arc<ArcSwap<Option<PredecodedAudio>>>,
 }
 
 impl AudioPlayback {
@@ -837,7 +844,6 @@ impl AudioPlayback {
             }
 
             let _ = handle.block_on(stop_rx.changed());
-            info!("Audio playback thread finished.");
         });
 
         true
@@ -1161,16 +1167,15 @@ impl AudioPlayback {
             segments,
             fps,
             playhead_rx,
+            predecoded_audio,
             ..
         } = self;
 
         let mut output_info = AudioInfo::from_stream_config(&supported_config);
         output_info.sample_format = output_info.sample_format.packed();
-        // Clamp output info for FFmpeg compatibility (max 8 channels)
         output_info = output_info.for_ffmpeg_output();
 
         let mut config = supported_config.config();
-        // Match stream config channels to clamped output info
         config.channels = output_info.channels as u16;
 
         let sample_rate = output_info.sample_rate;
@@ -1185,12 +1190,17 @@ impl AudioPlayback {
         );
 
         let project_snapshot = project.borrow().clone();
-        let mut audio_buffer = PrerenderedAudioBuffer::<T>::new(
-            segments,
-            &project_snapshot,
-            output_info,
-            duration_secs,
-        );
+
+        let mut audio_buffer = if let Some(predecoded) = predecoded_audio.load().as_ref().as_ref() {
+            PrerenderedAudioBuffer::<T>::from_predecoded(predecoded, output_info)
+        } else {
+            PrerenderedAudioBuffer::<T>::new(
+                segments,
+                &project_snapshot,
+                output_info,
+                duration_secs,
+            )
+        };
 
         audio_buffer.set_playhead(playhead);
 

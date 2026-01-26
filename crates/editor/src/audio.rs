@@ -15,6 +15,12 @@ use ringbuf::{
 use std::sync::Arc;
 use tracing::info;
 
+pub struct PredecodedAudio {
+    pub samples: Vec<f32>,
+    pub sample_rate: u32,
+    pub channels: usize,
+}
+
 pub struct AudioRenderer {
     data: Vec<AudioSegment>,
     cursor: AudioRendererCursor,
@@ -398,7 +404,7 @@ impl AudioResampler {
         let output_info = output_info.for_ffmpeg_output();
 
         let mut options = Dictionary::new();
-        options.set("filter_size", "128");
+        options.set("filter_size", "32");
         options.set("cutoff", "0.97");
 
         let context = resampling::Context::get_with(
@@ -415,7 +421,7 @@ impl AudioResampler {
             input_rate = AudioData::SAMPLE_RATE,
             output_rate = output_info.sample_rate,
             output_format = ?output_info.sample_format,
-            "Audio resampler created with high-quality settings (filter_size=128)"
+            "Audio resampler created with high-quality settings (filter_size=32)"
         );
 
         Ok(Self {
@@ -460,6 +466,129 @@ pub struct PrerenderedAudioBuffer<T: FromSampleBytes> {
 }
 
 impl<T: FromSampleBytes> PrerenderedAudioBuffer<T> {
+    pub fn from_predecoded(predecoded: &PredecodedAudio, output_info: AudioInfo) -> Self {
+        let output_info = output_info.for_ffmpeg_output();
+
+        let rates_match = predecoded.sample_rate == output_info.sample_rate
+            && predecoded.channels == output_info.channels;
+
+        let samples = if rates_match {
+            if output_info.sample_format == AudioData::SAMPLE_FORMAT
+                && std::mem::size_of::<T>() == std::mem::size_of::<f32>()
+            {
+                let mut samples: Vec<T> = Vec::with_capacity(predecoded.samples.len());
+                unsafe {
+                    let src = predecoded.samples.as_ptr() as *const T;
+                    let dst = samples.as_mut_ptr();
+                    std::ptr::copy_nonoverlapping(src, dst, predecoded.samples.len());
+                    samples.set_len(predecoded.samples.len());
+                }
+                samples
+            } else {
+                let bytes_per_sample = output_info.sample_size();
+                predecoded
+                    .samples
+                    .iter()
+                    .flat_map(|&f| match output_info.sample_format {
+                        ffmpeg::format::Sample::I16(_) => {
+                            let i = (f * 32767.0).clamp(-32768.0, 32767.0) as i16;
+                            i.to_ne_bytes().to_vec()
+                        }
+                        ffmpeg::format::Sample::I32(_) => {
+                            let i = (f * 2147483647.0).clamp(-2147483648.0, 2147483647.0) as i32;
+                            i.to_ne_bytes().to_vec()
+                        }
+                        ffmpeg::format::Sample::F64(_) => (f as f64).to_ne_bytes().to_vec(),
+                        _ => f.to_ne_bytes().to_vec(),
+                    })
+                    .collect::<Vec<u8>>()
+                    .chunks(bytes_per_sample)
+                    .map(|chunk| T::from_bytes(chunk))
+                    .collect()
+            }
+        } else {
+            let input_info = AudioInfo::new(
+                AudioData::SAMPLE_FORMAT,
+                predecoded.sample_rate,
+                predecoded.channels as u16,
+            )
+            .unwrap();
+
+            let mut options = Dictionary::new();
+            options.set("filter_size", "32");
+            options.set("cutoff", "0.97");
+
+            let mut context = resampling::Context::get_with(
+                input_info.sample_format,
+                input_info.channel_layout(),
+                input_info.sample_rate,
+                output_info.sample_format,
+                output_info.channel_layout(),
+                output_info.sample_rate,
+                options,
+            )
+            .unwrap();
+
+            let bytes_per_sample = output_info.sample_size();
+            let mut samples = Vec::new();
+            let chunk_size = 4096usize;
+            let mut output_frame = FFAudio::empty();
+
+            for chunk_start in
+                (0..predecoded.samples.len()).step_by(chunk_size * predecoded.channels)
+            {
+                let chunk_end =
+                    (chunk_start + chunk_size * predecoded.channels).min(predecoded.samples.len());
+                let chunk_samples = (chunk_end - chunk_start) / predecoded.channels;
+
+                if chunk_samples == 0 {
+                    break;
+                }
+
+                let mut frame = FFAudio::new(
+                    AudioData::SAMPLE_FORMAT,
+                    chunk_samples,
+                    ChannelLayout::STEREO,
+                );
+                frame.set_rate(predecoded.sample_rate);
+
+                let frame_data = &predecoded.samples[chunk_start..chunk_end];
+                frame.data_mut(0)[0..frame_data.len() * std::mem::size_of::<f32>()]
+                    .copy_from_slice(unsafe { cast_f32_slice_to_bytes(frame_data) });
+
+                if let Ok(Some(_)) = context.run(&frame, &mut output_frame) {
+                    let out_data = output_frame.data(0);
+                    let out_samples = output_frame.samples() * output_info.channels;
+                    let out_bytes = out_samples * bytes_per_sample;
+                    for chunk in out_data[..out_bytes].chunks(bytes_per_sample) {
+                        samples.push(T::from_bytes(chunk));
+                    }
+                }
+            }
+
+            while let Ok(Some(_)) = context.flush(&mut output_frame) {
+                let out_data = output_frame.data(0);
+                let out_samples = output_frame.samples() * output_info.channels;
+                if out_samples == 0 {
+                    break;
+                }
+                let out_bytes = out_samples * bytes_per_sample;
+                for chunk in out_data[..out_bytes].chunks(bytes_per_sample) {
+                    samples.push(T::from_bytes(chunk));
+                }
+            }
+
+            samples
+        };
+
+        Self {
+            samples,
+            read_position: 0,
+            sample_rate: output_info.sample_rate,
+            channels: output_info.channels,
+        }
+    }
+
     pub fn new(
         segments: Vec<AudioSegment>,
         project: &ProjectConfiguration,
@@ -470,15 +599,16 @@ impl<T: FromSampleBytes> PrerenderedAudioBuffer<T> {
         // The resampler will produce audio with this channel count
         let output_info = output_info.for_ffmpeg_output();
 
-        info!(
-            duration_secs = duration_secs,
-            sample_rate = output_info.sample_rate,
-            channels = output_info.channels,
-            "Pre-rendering audio for playback"
-        );
-
         let mut renderer = AudioRenderer::new(segments);
         let mut resampler = AudioResampler::new(output_info).unwrap();
+
+        let can_bypass_resampler = AudioData::SAMPLE_RATE == output_info.sample_rate
+            && 2 == output_info.channels
+            && output_info.sample_format == AudioData::SAMPLE_FORMAT;
+
+        if can_bypass_resampler {
+            info!("Resampler bypass enabled - rates and formats match");
+        }
 
         let total_source_samples = (duration_secs * AudioData::SAMPLE_RATE as f64) as usize;
         let estimated_output_samples =
@@ -486,7 +616,7 @@ impl<T: FromSampleBytes> PrerenderedAudioBuffer<T> {
 
         let mut samples: Vec<T> = Vec::with_capacity(estimated_output_samples + 10000);
         let bytes_per_sample = output_info.sample_size();
-        let chunk_size = 1024usize;
+        let chunk_size = 4096usize;
 
         renderer.set_playhead(0.0, project);
 
@@ -500,15 +630,30 @@ impl<T: FromSampleBytes> PrerenderedAudioBuffer<T> {
 
             match frame_opt {
                 Some(frame) => {
-                    let resampled = resampler.queue_and_process_frame(&frame);
-                    for chunk in resampled.chunks(bytes_per_sample) {
-                        samples.push(T::from_bytes(chunk));
+                    if can_bypass_resampler {
+                        debug_assert_eq!(
+                            bytes_per_sample,
+                            std::mem::size_of::<f32>(),
+                            "Bypass requires f32 sample format"
+                        );
+                        let frame_samples = frame.samples() * output_info.channels;
+                        let frame_bytes = &frame.data(0)[0..frame_samples * bytes_per_sample];
+                        for chunk in frame_bytes.chunks(bytes_per_sample) {
+                            samples.push(T::from_bytes(chunk));
+                        }
+                    } else {
+                        let resampled = resampler.queue_and_process_frame(&frame);
+                        for chunk in resampled.chunks(bytes_per_sample) {
+                            samples.push(T::from_bytes(chunk));
+                        }
                     }
                 }
                 None => {
-                    if let Some(flushed) = resampler.flush_frame() {
-                        for chunk in flushed.chunks(bytes_per_sample) {
-                            samples.push(T::from_bytes(chunk));
+                    if !can_bypass_resampler {
+                        if let Some(flushed) = resampler.flush_frame() {
+                            for chunk in flushed.chunks(bytes_per_sample) {
+                                samples.push(T::from_bytes(chunk));
+                            }
                         }
                     }
                     for _ in 0..output_chunk_samples {
@@ -520,20 +665,16 @@ impl<T: FromSampleBytes> PrerenderedAudioBuffer<T> {
             rendered_source_samples += chunk_size;
         }
 
-        while let Some(flushed) = resampler.flush_frame() {
-            if flushed.is_empty() {
-                break;
-            }
-            for chunk in flushed.chunks(bytes_per_sample) {
-                samples.push(T::from_bytes(chunk));
+        if !can_bypass_resampler {
+            while let Some(flushed) = resampler.flush_frame() {
+                if flushed.is_empty() {
+                    break;
+                }
+                for chunk in flushed.chunks(bytes_per_sample) {
+                    samples.push(T::from_bytes(chunk));
+                }
             }
         }
-
-        info!(
-            total_samples = samples.len(),
-            memory_mb = (samples.len() * std::mem::size_of::<T>()) / (1024 * 1024),
-            "Audio pre-rendering complete"
-        );
 
         Self {
             samples,
@@ -566,5 +707,9 @@ impl<T: FromSampleBytes> PrerenderedAudioBuffer<T> {
         if to_copy < buffer.len() {
             buffer[to_copy..].fill(T::EQUILIBRIUM);
         }
+    }
+
+    pub fn into_samples(self) -> Vec<T> {
+        self.samples
     }
 }

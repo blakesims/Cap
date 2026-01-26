@@ -1,6 +1,9 @@
+use crate::audio::PredecodedAudio;
 use crate::editor;
 use crate::playback::{self, PlaybackHandle, PlaybackStartError};
+use arc_swap::ArcSwap;
 use cap_audio::AudioData;
+use cap_media_info::AudioInfo;
 use cap_project::StudioRecordingMeta;
 use cap_project::{
     CursorEvents, ProjectConfiguration, RecordingMeta, RecordingMetaInner, TimelineConfiguration,
@@ -11,6 +14,7 @@ use cap_rendering::{
     RenderedFrame, SegmentVideoPaths, Video, ZoomFocusInterpolator, get_duration,
     spring_mass_damper::SpringMassDamperSimulationConfig,
 };
+use cpal::traits::{DeviceTrait, HostTrait};
 use std::{
     path::{Path, PathBuf},
     sync::{
@@ -83,11 +87,13 @@ pub struct EditorInstance {
         watch::Sender<ProjectConfiguration>,
         watch::Receiver<ProjectConfiguration>,
     ),
-    // ws_shutdown_token: CancellationToken,
     pub segment_medias: Arc<Vec<SegmentMedia>>,
     meta: RecordingMeta,
     pub export_preview_active: AtomicBool,
     pub export_active: AtomicBool,
+    pub audio_predecode_buffer: Arc<ArcSwap<Option<PredecodedAudio>>>,
+    audio_decode_cancel: CancellationToken,
+    audio_decode_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
 impl EditorInstance {
@@ -290,10 +296,15 @@ impl EditorInstance {
             playback_active_rx,
             export_preview_active: AtomicBool::new(false),
             export_active: AtomicBool::new(false),
+            audio_predecode_buffer: Arc::new(ArcSwap::new(Arc::new(None))),
+            audio_decode_cancel: CancellationToken::new(),
+            audio_decode_task: Mutex::new(None),
         });
 
         this.state.lock().await.preview_task =
             Some(this.clone().spawn_preview_renderer(preview_rx));
+
+        this.spawn_audio_predecode().await;
 
         Ok(this)
     }
@@ -302,7 +313,86 @@ impl EditorInstance {
         &self.meta
     }
 
+    async fn spawn_audio_predecode(&self) {
+        use crate::segments::get_audio_segments;
+        use tracing::{info, warn};
+
+        let segment_medias = self.segment_medias.clone();
+        let project_config = self.project_config.1.borrow().clone();
+        let audio_buffer = self.audio_predecode_buffer.clone();
+        let cancel_token = self.audio_decode_cancel.clone();
+
+        let duration = if let Some(timeline) = &project_config.timeline {
+            timeline.duration()
+        } else {
+            return;
+        };
+
+        let handle = tokio::task::spawn_blocking(move || {
+            if cancel_token.is_cancelled() {
+                return;
+            }
+
+            let segments = get_audio_segments(&segment_medias);
+            if segments.is_empty() || segments[0].tracks.is_empty() {
+                info!("No audio segments for pre-decode");
+                return;
+            }
+
+            let host = cpal::default_host();
+            let device = match host.default_output_device() {
+                Some(d) => d,
+                None => {
+                    warn!("No default output device for pre-decode");
+                    return;
+                }
+            };
+            let supported_config = match device.default_output_config() {
+                Ok(sc) => sc,
+                Err(e) => {
+                    warn!("Failed to get output config for pre-decode: {}", e);
+                    return;
+                }
+            };
+
+            let mut output_info = AudioInfo::from_stream_config(&supported_config);
+            output_info.sample_format = output_info.sample_format.packed();
+            output_info = output_info.for_ffmpeg_output();
+
+            if cancel_token.is_cancelled() {
+                return;
+            }
+
+            let buffer = crate::audio::PrerenderedAudioBuffer::<f32>::new(
+                segments,
+                &project_config,
+                output_info,
+                duration,
+            );
+
+            if cancel_token.is_cancelled() {
+                return;
+            }
+
+            let predecoded = PredecodedAudio {
+                samples: buffer.into_samples(),
+                sample_rate: output_info.sample_rate,
+                channels: output_info.channels,
+            };
+
+            audio_buffer.store(Arc::new(Some(predecoded)));
+        });
+
+        *self.audio_decode_task.lock().await = Some(handle);
+    }
+
     pub async fn dispose(&self) {
+        self.audio_decode_cancel.cancel();
+
+        if let Some(task) = self.audio_decode_task.lock().await.take() {
+            let _ = task.await;
+        }
+
         let mut state = self.state.lock().await;
 
         if let Some(handle) = state.playback_task.take() {
@@ -341,6 +431,7 @@ impl EditorInstance {
                 render_constants: self.render_constants.clone(),
                 start_frame_number,
                 project: self.project_config.0.subscribe(),
+                predecoded_audio: self.audio_predecode_buffer.clone(),
             })
             .start(fps, resolution_base)
             .await

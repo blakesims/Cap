@@ -365,6 +365,7 @@ Minimize `useEffect` usage: compute during render, handle logic in event handler
 - **Toasts**: Use `solid-toast` (already installed). Import: `import toast from "solid-toast"`. Toaster is mounted in `App.tsx`.
 - **Timeline segments**: `recordingSegment` property = pause/resume chunk index. Each pause/resume creates a new chunk with incrementing index.
 - **Selection types**: `editorState.timeline.selection` has types: `clip`, `zoom`, `mask`, `text`, `scene`. Always check `.type` before accessing `.indices`.
+- **Audio playback**: Pre-decode at output device sample rate on editor open. Use `ArcSwap` for lock-free sharing (never `Mutex` in audio callbacks). See `crates/editor/src/audio.rs`.
 
 ## Conventions
 - **CRITICAL: NO CODE COMMENTS**: Never add any form of comments to code. This includes:
