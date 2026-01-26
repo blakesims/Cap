@@ -68,22 +68,8 @@ install_app() {
     echo "==> Removing quarantine flags..."
     xattr -cr "$INSTALL_PATH" || true
 
-    echo "==> Re-signing Spacedrive.framework..."
-    if [ -d "$INSTALL_PATH/Contents/Frameworks/Spacedrive.framework" ]; then
-        find "$INSTALL_PATH/Contents/Frameworks/Spacedrive.framework" -name "*.dylib" \
-            -exec codesign --force --sign "$SIGNING_IDENTITY" --timestamp=none {} \;
-        codesign --force --sign "$SIGNING_IDENTITY" --timestamp=none \
-            "$INSTALL_PATH/Contents/Frameworks/Spacedrive.framework"
-    fi
-
-    echo "==> Re-signing other frameworks..."
-    find "$INSTALL_PATH/Contents/Frameworks" -type f \( -name "*.dylib" -o -name "*.so" \) \
-        -exec codesign --force --sign "$SIGNING_IDENTITY" --timestamp=none {} \; 2>/dev/null || true
-    find "$INSTALL_PATH/Contents/Frameworks" -type d -name "*.framework" \
-        -exec codesign --force --sign "$SIGNING_IDENTITY" --timestamp=none {} \; 2>/dev/null || true
-
-    echo "==> Signing app bundle..."
-    codesign --force --sign "$SIGNING_IDENTITY" --timestamp=none "$INSTALL_PATH"
+    echo "==> Signing app bundle (deep)..."
+    codesign --force --deep --sign "$SIGNING_IDENTITY" --timestamp=none "$INSTALL_PATH"
 
     echo "==> Verifying signature..."
     codesign --verify --deep --strict --verbose=2 "$INSTALL_PATH"
@@ -162,18 +148,8 @@ rollback_to() {
     echo "==> Removing quarantine flags..."
     xattr -cr "$INSTALL_PATH" || true
 
-    echo "==> Re-signing..."
-    if [ -d "$INSTALL_PATH/Contents/Frameworks/Spacedrive.framework" ]; then
-        find "$INSTALL_PATH/Contents/Frameworks/Spacedrive.framework" -name "*.dylib" \
-            -exec codesign --force --sign "$SIGNING_IDENTITY" --timestamp=none {} \;
-        codesign --force --sign "$SIGNING_IDENTITY" --timestamp=none \
-            "$INSTALL_PATH/Contents/Frameworks/Spacedrive.framework"
-    fi
-    find "$INSTALL_PATH/Contents/Frameworks" -type f \( -name "*.dylib" -o -name "*.so" \) \
-        -exec codesign --force --sign "$SIGNING_IDENTITY" --timestamp=none {} \; 2>/dev/null || true
-    find "$INSTALL_PATH/Contents/Frameworks" -type d -name "*.framework" \
-        -exec codesign --force --sign "$SIGNING_IDENTITY" --timestamp=none {} \; 2>/dev/null || true
-    codesign --force --sign "$SIGNING_IDENTITY" --timestamp=none "$INSTALL_PATH"
+    echo "==> Signing app bundle (deep)..."
+    codesign --force --deep --sign "$SIGNING_IDENTITY" --timestamp=none "$INSTALL_PATH"
 
     echo "==> Verifying signature..."
     codesign --verify --deep --strict --verbose=2 "$INSTALL_PATH"
