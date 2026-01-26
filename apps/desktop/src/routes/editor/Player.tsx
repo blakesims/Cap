@@ -17,6 +17,7 @@ import {
 	useEditorContext,
 } from "./context";
 import { preloadCropVideoFull } from "./cropVideoPreloader";
+import { KeyboardShortcutsModal } from "./KeyboardShortcutsModal";
 import { MaskOverlay } from "./MaskOverlay";
 import { PerformanceOverlay } from "./PerformanceOverlay";
 import { TextOverlay } from "./TextOverlay";
@@ -63,6 +64,8 @@ export function PlayerContent() {
 		editorActions,
 		projectActions,
 	} = useEditorContext();
+
+	const [showShortcutsModal, setShowShortcutsModal] = createSignal(false);
 
 	const previewOptions = [
 		{ label: "Full", value: "full" as EditorPreviewQuality },
@@ -359,6 +362,10 @@ export function PlayerContent() {
 				combo: "K",
 				handler: () => editorActions.pause(),
 			},
+			{
+				combo: "Shift+/",
+				handler: () => setShowShortcutsModal(true),
+			},
 		],
 	);
 
@@ -557,6 +564,10 @@ export function PlayerContent() {
 					/>
 				</div>
 			</div>
+			<KeyboardShortcutsModal
+				open={showShortcutsModal()}
+				onClose={() => setShowShortcutsModal(false)}
+			/>
 		</div>
 	);
 }

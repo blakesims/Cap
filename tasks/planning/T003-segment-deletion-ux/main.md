@@ -126,7 +126,7 @@ toast("Cannot delete the only remaining segment");
 | :--- | :--- | :--- | :--- | :--- |
 | S01 | Core Deletion Logic Fix | Medium | ~3-4h | **Done** |
 | S02 | User Feedback & Visual State | Medium | ~3-4h | **Done** |
-| S03 | Keyboard Shortcuts Help | Low | ~2h | Planned |
+| S03 | Keyboard Shortcuts Help | Low | ~2h | **Done** |
 
 ---
 
@@ -369,10 +369,10 @@ style={{
 **Objective:** Add `?` key to show a modal with all keyboard shortcuts.
 
 #### Acceptance Criteria
-- [ ] `?` (Shift+/) opens shortcuts modal
-- [ ] Modal shows all editor shortcuts grouped by function
-- [ ] Escape or click outside dismisses modal
-- [ ] Modal is styled consistently with rest of editor
+- [x] `?` (Shift+/) opens shortcuts modal
+- [x] Modal shows all editor shortcuts grouped by function
+- [x] Escape or click outside dismisses modal
+- [x] Modal is styled consistently with rest of editor
 
 #### Technical Changes
 
