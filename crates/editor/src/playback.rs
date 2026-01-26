@@ -1156,14 +1156,15 @@ impl AudioPlayback {
         duration_secs: f64,
     ) -> Result<(watch::Receiver<bool>, cpal::Stream), MediaError>
     where
-        T: FromSampleBytes + cpal::Sample,
+        T: FromSampleBytes + cpal::Sample + Send + Sync + 'static,
     {
         use crate::audio::PrerenderedAudioBuffer;
+        use std::sync::atomic::{AtomicU64, Ordering};
 
         let AudioPlayback {
             stop_rx,
             start_frame_number,
-            project,
+            mut project,
             segments,
             fps,
             playhead_rx,
@@ -1191,18 +1192,113 @@ impl AudioPlayback {
 
         let project_snapshot = project.borrow().clone();
 
-        let mut audio_buffer = if let Some(predecoded) = predecoded_audio.load().as_ref().as_ref() {
+        let initial_buffer = if let Some(predecoded) = predecoded_audio.load().as_ref().as_ref() {
             PrerenderedAudioBuffer::<T>::from_predecoded(predecoded, output_info)
         } else {
             PrerenderedAudioBuffer::<T>::new(
-                segments,
+                segments.clone(),
                 &project_snapshot,
                 output_info,
                 duration_secs,
             )
         };
 
-        audio_buffer.set_playhead(playhead);
+        initial_buffer.set_playhead(playhead);
+
+        let shared_buffer: Arc<ArcSwap<PrerenderedAudioBuffer<T>>> =
+            Arc::new(ArcSwap::from_pointee(initial_buffer));
+        let buffer_for_callback = shared_buffer.clone();
+        let buffer_for_rebuilder = shared_buffer;
+
+        let current_playhead = Arc::new(AtomicU64::new(playhead.to_bits()));
+        let playhead_for_callback = current_playhead.clone();
+        let playhead_for_rebuilder = current_playhead;
+
+        let stop_rx_for_rebuilder = stop_rx.clone();
+        let segments_for_rebuild = segments;
+        let original_duration = duration_secs;
+
+        std::thread::spawn(move || {
+            let rt = match tokio::runtime::Builder::new_current_thread()
+                .enable_time()
+                .build()
+            {
+                Ok(rt) => rt,
+                Err(e) => {
+                    error!("Failed to create tokio runtime for audio rebuilder: {e}");
+                    return;
+                }
+            };
+
+            rt.block_on(async {
+                let mut stop_rx = stop_rx_for_rebuilder;
+                let mut last_segment_count = project
+                    .borrow()
+                    .timeline
+                    .as_ref()
+                    .map(|t| t.segments.len())
+                    .unwrap_or(0);
+
+                loop {
+                    tokio::select! {
+                        biased;
+                        _ = stop_rx.changed() => {
+                            if *stop_rx.borrow() {
+                                info!("Audio rebuilder stopping");
+                                break;
+                            }
+                        }
+                        result = project.changed() => {
+                            if result.is_err() {
+                                break;
+                            }
+
+                            let new_project = project.borrow_and_update().clone();
+                            let new_segment_count = new_project
+                                .timeline
+                                .as_ref()
+                                .map(|t| t.segments.len())
+                                .unwrap_or(0);
+
+                            if new_segment_count == last_segment_count {
+                                continue;
+                            }
+                            last_segment_count = new_segment_count;
+
+                            tokio::time::sleep(Duration::from_millis(50)).await;
+
+                            let new_duration = new_project
+                                .timeline
+                                .as_ref()
+                                .map(|t| t.duration())
+                                .unwrap_or(original_duration);
+
+                            info!(
+                                new_duration = new_duration,
+                                segments = new_segment_count,
+                                "Rebuilding audio buffer after timeline change"
+                            );
+
+                            let new_buffer = PrerenderedAudioBuffer::<T>::new(
+                                segments_for_rebuild.clone(),
+                                &new_project,
+                                output_info,
+                                new_duration,
+                            );
+
+                            let current = f64::from_bits(
+                                playhead_for_rebuilder.load(Ordering::Acquire)
+                            );
+                            new_buffer.set_playhead(current.min(new_duration));
+
+                            buffer_for_rebuilder.store(Arc::new(new_buffer));
+
+                            info!("Audio buffer rebuilt successfully");
+                        }
+                    }
+                }
+            });
+        });
 
         let mut playhead_rx_for_stream = playhead_rx.clone();
         let mut last_video_playhead = playhead;
@@ -1211,9 +1307,13 @@ impl AudioPlayback {
             .build_output_stream(
                 &config,
                 move |buffer: &mut [T], _info| {
+                    let audio_buffer = buffer_for_callback.load();
+
                     if playhead_rx_for_stream.has_changed().unwrap_or(false) {
                         let video_playhead = *playhead_rx_for_stream.borrow_and_update();
                         let jump = (video_playhead - last_video_playhead).abs();
+
+                        playhead_for_callback.store(video_playhead.to_bits(), Ordering::Release);
 
                         if jump > 0.1 {
                             audio_buffer.set_playhead(video_playhead);

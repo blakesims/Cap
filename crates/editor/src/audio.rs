@@ -460,7 +460,7 @@ impl AudioResampler {
 
 pub struct PrerenderedAudioBuffer<T: FromSampleBytes> {
     samples: Vec<T>,
-    read_position: usize,
+    read_position: std::sync::atomic::AtomicUsize,
     sample_rate: u32,
     channels: usize,
 }
@@ -583,7 +583,7 @@ impl<T: FromSampleBytes> PrerenderedAudioBuffer<T> {
 
         Self {
             samples,
-            read_position: 0,
+            read_position: std::sync::atomic::AtomicUsize::new(0),
             sample_rate: output_info.sample_rate,
             channels: output_info.channels,
         }
@@ -649,11 +649,9 @@ impl<T: FromSampleBytes> PrerenderedAudioBuffer<T> {
                     }
                 }
                 None => {
-                    if !can_bypass_resampler {
-                        if let Some(flushed) = resampler.flush_frame() {
-                            for chunk in flushed.chunks(bytes_per_sample) {
-                                samples.push(T::from_bytes(chunk));
-                            }
+                    if !can_bypass_resampler && let Some(flushed) = resampler.flush_frame() {
+                        for chunk in flushed.chunks(bytes_per_sample) {
+                            samples.push(T::from_bytes(chunk));
                         }
                     }
                     for _ in 0..output_chunk_samples {
@@ -678,30 +676,36 @@ impl<T: FromSampleBytes> PrerenderedAudioBuffer<T> {
 
         Self {
             samples,
-            read_position: 0,
+            read_position: std::sync::atomic::AtomicUsize::new(0),
             sample_rate: output_info.sample_rate,
             channels: output_info.channels,
         }
     }
 
-    pub fn set_playhead(&mut self, playhead_secs: f64) {
+    pub fn set_playhead(&self, playhead_secs: f64) {
+        use std::sync::atomic::Ordering;
         let sample_position = (playhead_secs * self.sample_rate as f64) as usize * self.channels;
-        self.read_position = sample_position.min(self.samples.len());
+        self.read_position
+            .store(sample_position.min(self.samples.len()), Ordering::Release);
     }
 
     #[allow(dead_code)]
     pub fn current_playhead_secs(&self) -> f64 {
-        (self.read_position / self.channels) as f64 / self.sample_rate as f64
+        use std::sync::atomic::Ordering;
+        (self.read_position.load(Ordering::Acquire) / self.channels) as f64
+            / self.sample_rate as f64
     }
 
-    pub fn fill(&mut self, buffer: &mut [T]) {
-        let available = self.samples.len().saturating_sub(self.read_position);
+    pub fn fill(&self, buffer: &mut [T]) {
+        use std::sync::atomic::Ordering;
+        let read_pos = self.read_position.load(Ordering::Acquire);
+        let available = self.samples.len().saturating_sub(read_pos);
         let to_copy = buffer.len().min(available);
 
         if to_copy > 0 {
-            buffer[..to_copy]
-                .copy_from_slice(&self.samples[self.read_position..self.read_position + to_copy]);
-            self.read_position += to_copy;
+            buffer[..to_copy].copy_from_slice(&self.samples[read_pos..read_pos + to_copy]);
+            self.read_position
+                .store(read_pos + to_copy, Ordering::Release);
         }
 
         if to_copy < buffer.len() {
