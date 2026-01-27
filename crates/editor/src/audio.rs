@@ -19,6 +19,28 @@ pub struct PredecodedAudio {
     pub samples: Vec<f32>,
     pub sample_rate: u32,
     pub channels: usize,
+    pub timeline_hash: u64,
+}
+
+pub fn compute_timeline_hash(timeline: &cap_project::TimelineConfiguration) -> u64 {
+    use std::hash::{Hash, Hasher};
+    use std::collections::hash_map::DefaultHasher;
+
+    if timeline.segments.is_empty() {
+        return 0;
+    }
+
+    let quantize = |f: f64| -> i64 { (f * 1_000_000.0).round() as i64 };
+
+    let mut hasher = DefaultHasher::new();
+    timeline.segments.len().hash(&mut hasher);
+    for seg in &timeline.segments {
+        seg.recording_clip.hash(&mut hasher);
+        quantize(seg.start).hash(&mut hasher);
+        quantize(seg.end).hash(&mut hasher);
+        quantize(seg.timescale).hash(&mut hasher);
+    }
+    hasher.finish()
 }
 
 pub struct AudioRenderer {

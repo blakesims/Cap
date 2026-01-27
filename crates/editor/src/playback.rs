@@ -1191,17 +1191,102 @@ impl AudioPlayback {
         );
 
         let project_snapshot = project.borrow().clone();
+        let current_timeline_hash = project_snapshot
+            .timeline
+            .as_ref()
+            .map(|t| crate::audio::compute_timeline_hash(t))
+            .unwrap_or(0);
+        let current_duration = project_snapshot
+            .timeline
+            .as_ref()
+            .map(|t| t.duration())
+            .unwrap_or(duration_secs);
 
-        let initial_buffer = if let Some(predecoded) = predecoded_audio.load().as_ref().as_ref() {
-            PrerenderedAudioBuffer::<T>::from_predecoded(predecoded, output_info)
+        let buffer_start = std::time::Instant::now();
+
+        let predecoded_state = predecoded_audio.load();
+        let has_predecoded = predecoded_state.as_ref().as_ref().is_some();
+        let predecoded_hash = predecoded_state
+            .as_ref()
+            .as_ref()
+            .map(|p| p.timeline_hash);
+
+        info!(
+            has_predecoded = has_predecoded,
+            predecoded_hash = ?predecoded_hash,
+            current_timeline_hash = current_timeline_hash,
+            "Checking audio buffer state for playback"
+        );
+
+        let hashes_match = predecoded_hash == Some(current_timeline_hash);
+
+        let final_predecoded = if has_predecoded && hashes_match {
+            predecoded_state
+        } else if !has_predecoded {
+            info!("Pre-decoded audio not ready, waiting for background task...");
+            let poll_start = std::time::Instant::now();
+            let max_wait = std::time::Duration::from_secs(120);
+            let poll_interval = std::time::Duration::from_millis(100);
+
+            loop {
+                std::thread::sleep(poll_interval);
+                let current = predecoded_audio.load();
+                if let Some(p) = current.as_ref().as_ref() {
+                    if p.timeline_hash == current_timeline_hash {
+                        let wait_ms = poll_start.elapsed().as_millis();
+                        info!(wait_ms = wait_ms, "Pre-decoded audio became available with matching hash");
+                        break current;
+                    }
+                }
+                if poll_start.elapsed() > max_wait {
+                    warn!("Timeout waiting for pre-decoded audio, falling back to sync render");
+                    break current;
+                }
+            }
         } else {
-            PrerenderedAudioBuffer::<T>::new(
-                segments.clone(),
-                &project_snapshot,
-                output_info,
-                duration_secs,
-            )
+            predecoded_state
         };
+
+        let initial_buffer =
+            if let Some(predecoded) = final_predecoded.as_ref().as_ref() {
+                if predecoded.timeline_hash == current_timeline_hash {
+                    info!(
+                        timeline_hash = current_timeline_hash,
+                        predecoded_samples = predecoded.samples.len(),
+                        "FAST PATH: Using pre-decoded audio buffer"
+                    );
+                    PrerenderedAudioBuffer::<T>::from_predecoded(predecoded, output_info)
+                } else {
+                    info!(
+                        predecoded_hash = predecoded.timeline_hash,
+                        current_hash = current_timeline_hash,
+                        duration = current_duration,
+                        "SLOW PATH: Timeline changed, re-rendering audio"
+                    );
+                    PrerenderedAudioBuffer::<T>::new(
+                        segments.clone(),
+                        &project_snapshot,
+                        output_info,
+                        current_duration,
+                    )
+                }
+            } else {
+                info!(
+                    duration = current_duration,
+                    "SLOW PATH: No pre-decoded audio after wait, rendering synchronously"
+                );
+                PrerenderedAudioBuffer::<T>::new(
+                    segments.clone(),
+                    &project_snapshot,
+                    output_info,
+                    current_duration,
+                )
+            };
+        let buffer_elapsed = buffer_start.elapsed();
+        info!(
+            buffer_creation_ms = buffer_elapsed.as_millis(),
+            "Audio buffer created for playback"
+        );
 
         initial_buffer.set_playhead(playhead);
 
@@ -1232,12 +1317,17 @@ impl AudioPlayback {
 
             rt.block_on(async {
                 let mut stop_rx = stop_rx_for_rebuilder;
-                let mut last_segment_count = project
+                let mut last_timeline_hash = project
                     .borrow()
                     .timeline
                     .as_ref()
-                    .map(|t| t.segments.len())
+                    .map(|t| crate::audio::compute_timeline_hash(t))
                     .unwrap_or(0);
+
+                info!(
+                    initial_hash = last_timeline_hash,
+                    "Audio rebuilder started, watching for timeline changes"
+                );
 
                 loop {
                     tokio::select! {
@@ -1250,20 +1340,27 @@ impl AudioPlayback {
                         }
                         result = project.changed() => {
                             if result.is_err() {
+                                warn!("Project watch channel closed unexpectedly");
                                 break;
                             }
 
                             let new_project = project.borrow_and_update().clone();
-                            let new_segment_count = new_project
+                            let new_timeline_hash = new_project
                                 .timeline
                                 .as_ref()
-                                .map(|t| t.segments.len())
+                                .map(|t| crate::audio::compute_timeline_hash(t))
                                 .unwrap_or(0);
 
-                            if new_segment_count == last_segment_count {
+                            info!(
+                                old_hash = last_timeline_hash,
+                                new_hash = new_timeline_hash,
+                                "Audio rebuilder received project update"
+                            );
+
+                            if new_timeline_hash == last_timeline_hash {
                                 continue;
                             }
-                            last_segment_count = new_segment_count;
+                            last_timeline_hash = new_timeline_hash;
 
                             tokio::time::sleep(Duration::from_millis(50)).await;
 
@@ -1275,7 +1372,7 @@ impl AudioPlayback {
 
                             info!(
                                 new_duration = new_duration,
-                                segments = new_segment_count,
+                                timeline_hash = new_timeline_hash,
                                 "Rebuilding audio buffer after timeline change"
                             );
 
@@ -1289,11 +1386,16 @@ impl AudioPlayback {
                             let current = f64::from_bits(
                                 playhead_for_rebuilder.load(Ordering::Acquire)
                             );
-                            new_buffer.set_playhead(current.min(new_duration));
+                            let clamped_playhead = current.min(new_duration);
+                            new_buffer.set_playhead(clamped_playhead);
 
                             buffer_for_rebuilder.store(Arc::new(new_buffer));
 
-                            info!("Audio buffer rebuilt successfully");
+                            info!(
+                                playhead = clamped_playhead,
+                                duration = new_duration,
+                                "Audio buffer rebuilt and swapped"
+                            );
                         }
                     }
                 }

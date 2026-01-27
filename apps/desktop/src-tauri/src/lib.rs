@@ -1644,11 +1644,21 @@ async fn set_playhead_position(
 
 #[tauri::command]
 #[specta::specta]
-#[instrument(skip(editor_instance))]
+#[instrument(skip(editor_instance, config))]
 async fn set_project_config(
     editor_instance: WindowEditorInstance,
     config: ProjectConfiguration,
 ) -> Result<(), String> {
+    let segment_count = config
+        .timeline
+        .as_ref()
+        .map(|t| t.segments.len())
+        .unwrap_or(0);
+    tracing::info!(
+        segment_count,
+        "set_project_config: saving and sending to watch channel"
+    );
+
     config.write(&editor_instance.project_path).unwrap();
 
     editor_instance.project_config.0.send(config).ok();

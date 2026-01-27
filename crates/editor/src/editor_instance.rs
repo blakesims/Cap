@@ -328,8 +328,24 @@ impl EditorInstance {
             return;
         };
 
+        let timeline_segment_count = project_config
+            .timeline
+            .as_ref()
+            .map(|t| t.segments.len())
+            .unwrap_or(0);
+
+        info!(
+            duration_secs = duration,
+            timeline_segments = timeline_segment_count,
+            "Starting background audio pre-decode task"
+        );
+
         let handle = tokio::task::spawn_blocking(move || {
+            let start_time = std::time::Instant::now();
+            info!("Audio pre-decode task started on blocking thread");
+
             if cancel_token.is_cancelled() {
+                info!("Audio pre-decode cancelled before start");
                 return;
             }
 
@@ -338,6 +354,8 @@ impl EditorInstance {
                 info!("No audio segments for pre-decode");
                 return;
             }
+
+            info!(audio_segment_count = segments.len(), "Found audio segments for pre-decode");
 
             let host = cpal::default_host();
             let device = match host.default_output_device() {
@@ -363,24 +381,53 @@ impl EditorInstance {
                 return;
             }
 
+            info!(
+                sample_rate = output_info.sample_rate,
+                channels = output_info.channels,
+                duration_secs = duration,
+                "Beginning audio render for pre-decode"
+            );
+
+            let render_start = std::time::Instant::now();
             let buffer = crate::audio::PrerenderedAudioBuffer::<f32>::new(
                 segments,
                 &project_config,
                 output_info,
                 duration,
             );
+            let render_elapsed = render_start.elapsed();
 
             if cancel_token.is_cancelled() {
+                info!("Audio pre-decode cancelled after render");
                 return;
             }
 
+            let timeline_hash = project_config
+                .timeline
+                .as_ref()
+                .map(|t| crate::audio::compute_timeline_hash(t))
+                .unwrap_or(0);
+
+            let samples = buffer.into_samples();
+            let sample_count = samples.len();
+
             let predecoded = PredecodedAudio {
-                samples: buffer.into_samples(),
+                samples,
                 sample_rate: output_info.sample_rate,
                 channels: output_info.channels,
+                timeline_hash,
             };
 
             audio_buffer.store(Arc::new(Some(predecoded)));
+
+            let total_elapsed = start_time.elapsed();
+            info!(
+                render_ms = render_elapsed.as_millis(),
+                total_ms = total_elapsed.as_millis(),
+                sample_count = sample_count,
+                timeline_hash = timeline_hash,
+                "Audio pre-decode COMPLETED and stored"
+            );
         });
 
         *self.audio_decode_task.lock().await = Some(handle);
