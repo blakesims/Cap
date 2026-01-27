@@ -1607,15 +1607,19 @@ impl ProjectUniforms {
                     normalized_screen_motion,
                 );
 
+                let fixed_crop_top = frame_size[1] * project.camera.crop_top;
+                let fixed_crop_bottom = frame_size[1] * project.camera.crop_bottom;
+                let cropped_height = frame_size[1] - fixed_crop_top - fixed_crop_bottom;
+
                 let crop_bounds = match project.camera.shape {
-                    CameraShape::Source => [0.0, 0.0, frame_size[0], frame_size[1]],
+                    CameraShape::Source => [0.0, fixed_crop_top, frame_size[0], frame_size[1] - fixed_crop_bottom],
                     CameraShape::Square => {
-                        if frame_size[0] > frame_size[1] {
-                            let offset = (frame_size[0] - frame_size[1]) / 2.0;
-                            [offset, 0.0, frame_size[0] - offset, frame_size[1]]
+                        if frame_size[0] > cropped_height {
+                            let offset = (frame_size[0] - cropped_height) / 2.0;
+                            [offset, fixed_crop_top, frame_size[0] - offset, frame_size[1] - fixed_crop_bottom]
                         } else {
-                            let offset = (frame_size[1] - frame_size[0]) / 2.0;
-                            [0.0, offset, frame_size[0], frame_size[1] - offset]
+                            let extra_crop = (cropped_height - frame_size[0]) / 2.0;
+                            [0.0, fixed_crop_top + extra_crop, frame_size[0], frame_size[1] - fixed_crop_bottom - extra_crop]
                         }
                     }
                 };
@@ -1670,8 +1674,6 @@ impl ProjectUniforms {
             .map(|camera_size| {
                 let output_size = [output_size.0 as f32, output_size.1 as f32];
                 let frame_size = [camera_size.x as f32, camera_size.y as f32];
-
-                let aspect = frame_size[0] / frame_size[1];
                 let output_aspect = output_size[0] / output_size[1];
 
                 let zoom_factor = scene.camera_only_zoom as f32;
@@ -1689,19 +1691,19 @@ impl ProjectUniforms {
                     position[1] + size[1],
                 ];
 
-                // In camera-only mode, we ignore the camera shape setting (Square/Source)
-                // and just apply the minimum crop needed to fill the output aspect ratio.
-                // This prevents excessive zooming when shape is set to Square.
-                let crop_bounds = if aspect > output_aspect {
-                    // Camera is wider than output - crop left and right
-                    let visible_width = frame_size[1] * output_aspect;
+                let fixed_crop_top = frame_size[1] * project.camera.crop_top;
+                let fixed_crop_bottom = frame_size[1] * project.camera.crop_bottom;
+                let cropped_height = frame_size[1] - fixed_crop_top - fixed_crop_bottom;
+                let cropped_aspect = frame_size[0] / cropped_height;
+
+                let crop_bounds = if cropped_aspect > output_aspect {
+                    let visible_width = cropped_height * output_aspect;
                     let crop_x = (frame_size[0] - visible_width) / 2.0;
-                    [crop_x, 0.0, frame_size[0] - crop_x, frame_size[1]]
+                    [crop_x, fixed_crop_top, frame_size[0] - crop_x, frame_size[1] - fixed_crop_bottom]
                 } else {
-                    // Camera is taller than output - crop top and bottom
                     let visible_height = frame_size[0] / output_aspect;
-                    let crop_y = (frame_size[1] - visible_height) / 2.0;
-                    [0.0, crop_y, frame_size[0], frame_size[1] - crop_y]
+                    let extra_crop_y = (cropped_height - visible_height) / 2.0;
+                    [0.0, fixed_crop_top + extra_crop_y, frame_size[0], frame_size[1] - fixed_crop_bottom - extra_crop_y]
                 };
 
                 let camera_only_blur =
@@ -1761,17 +1763,31 @@ impl ProjectUniforms {
 
                 let target_bounds = [camera_x, 0.0, camera_x + camera_width, camera_height];
 
-                let target_aspect = camera_width / camera_height;
-                let aspect = frame_size[0] / frame_size[1];
+                let fixed_crop_top = frame_size[1] * project.camera.crop_top;
+                let fixed_crop_bottom = frame_size[1] * project.camera.crop_bottom;
+                let cropped_height = frame_size[1] - fixed_crop_top - fixed_crop_bottom;
 
-                let crop_bounds = if aspect > target_aspect {
-                    let visible_width = frame_size[1] * target_aspect;
+                let target_aspect = camera_width / camera_height;
+                let cropped_aspect = frame_size[0] / cropped_height;
+
+                let crop_bounds = if cropped_aspect > target_aspect {
+                    let visible_width = cropped_height * target_aspect;
                     let crop_x = (frame_size[0] - visible_width) / 2.0;
-                    [crop_x, 0.0, frame_size[0] - crop_x, frame_size[1]]
+                    [
+                        crop_x,
+                        fixed_crop_top,
+                        frame_size[0] - crop_x,
+                        frame_size[1] - fixed_crop_bottom,
+                    ]
                 } else {
                     let visible_height = frame_size[0] / target_aspect;
-                    let crop_y = (frame_size[1] - visible_height) / 2.0;
-                    [0.0, crop_y, frame_size[0], frame_size[1] - crop_y]
+                    let extra_crop_y = (cropped_height - visible_height) / 2.0;
+                    [
+                        0.0,
+                        fixed_crop_top + extra_crop_y,
+                        frame_size[0],
+                        frame_size[1] - fixed_crop_bottom - extra_crop_y,
+                    ]
                 };
 
                 CompositeVideoFrameUniforms {
@@ -2156,7 +2172,8 @@ impl RendererLayers {
             session.swap_textures();
         }
 
-        let should_render = uniforms.scene.should_render_screen();
+        let should_render =
+            uniforms.scene.should_render_screen() && !uniforms.scene.is_split_screen();
 
         if should_render {
             let mut pass = render_pass!(session.current_texture_view(), wgpu::LoadOp::Load);

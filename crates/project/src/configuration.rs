@@ -306,6 +306,10 @@ pub struct Camera {
     pub rounding_type: CornerStyle,
     #[serde(default = "Camera::default_scale_during_zoom")]
     pub scale_during_zoom: f32,
+    #[serde(default = "Camera::default_crop")]
+    pub crop_top: f32,
+    #[serde(default = "Camera::default_crop")]
+    pub crop_bottom: f32,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Type, Default)]
@@ -328,6 +332,10 @@ impl Camera {
     fn default_scale_during_zoom() -> f32 {
         0.7
     }
+
+    fn default_crop() -> f32 {
+        0.1
+    }
 }
 
 impl Default for Camera {
@@ -348,6 +356,8 @@ impl Default for Camera {
             shape: CameraShape::Square,
             rounding_type: CornerStyle::default(),
             scale_during_zoom: Self::default_scale_during_zoom(),
+            crop_top: 0.1,
+            crop_bottom: 0.1,
         }
     }
 }

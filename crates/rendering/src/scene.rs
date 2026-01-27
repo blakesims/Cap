@@ -410,6 +410,10 @@ impl InterpolatedScene {
     }
 
     pub fn regular_camera_transition_opacity(&self) -> f64 {
+        if self.is_split_screen() {
+            return 0.0;
+        }
+
         if matches!(self.to_mode, SceneMode::CameraOnly)
             && !matches!(self.from_mode, SceneMode::CameraOnly)
         {

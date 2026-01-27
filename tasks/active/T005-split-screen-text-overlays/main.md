@@ -8,7 +8,9 @@
 - **Dependencies:** crates/rendering/, crates/project/, apps/desktop/src/routes/editor/
 - **Rules Required:** CLAUDE.md
 - **Acceptance Criteria:**
-  - [x] New split-screen layout modes available (SplitScreenLeft, SplitScreenRight)
+  - [x] Split-screen shows camera (40% right) + styled background (60% left)
+  - [x] Camera cropped (configurable top/bottom, default 10%) in all modes
+  - [x] PiP disabled when in split-screen mode
   - [x] Animated transitions between all layout modes (300ms, matching existing)
   - [x] Text segments support keyframe animation (position, opacity)
   - [ ] Bullet points can appear with staggered timing
@@ -26,29 +28,23 @@ Enable a "codified editing style" where recordings can use split-screen layouts 
 ### Session Log (2026-01-27)
 
 1. **S02 TypeScript** - Added keyframe types to `text.ts` ✓
-2. **S01 Complete** - All split-screen rendering implemented ✓
-   - SceneMode variants added
-   - 3 same_mode patterns updated
-   - InterpolatedScene helpers added
-   - split_camera uniforms and rendering pipeline
-   - Display bounds calculation for split-screen
-   - No-camera fallback handling
-   - UI updated (SceneTrack.tsx, ConfigSidebar.tsx)
+2. **S01 Initial** - Split-screen rendering implemented (needed rework)
 3. **Unit Tests** - Added 8 tests for scene.rs split-screen helpers ✓
 4. **Bug Fixes** - Fixed pre-existing test compilation errors in avassetreader.rs
 5. **S02 Rust Complete** - Implemented keyframe animation backend ✓
-   - Added `TextScalarKeyframe`, `TextVectorKeyframe`, `TextKeyframes` structs
-   - Added `keyframes` field to `TextSegment` with `#[serde(default)]`
-   - Implemented `interpolate_text_vector()` and `interpolate_text_scalar()`
-   - Modified `prepare_texts()` to use keyframe interpolation
-   - Added 5 unit tests for interpolation functions
 6. **Bug Fixes** - Fixed pre-existing clippy errors in video-decode and rendering crates
+7. **QA Testing** - Found S01 implementation doesn't match requirements
+8. **S01 Rework Complete** ✓
+   - Display layer now hidden in split-screen (shows background instead)
+   - PiP camera disabled in split-screen mode
+   - Added configurable camera crop (`cropTop`, `cropBottom`) - default 10%
+   - Crop applies to ALL camera modes (PiP, camera-only, split-screen)
 
 ## 3. Stories Breakdown
 
 | Story ID | Story Name / Objective | Status | Deliverable | Estimate |
 | :--- | :--- | :--- | :--- | :--- |
-| S01 | Add Split-Screen Layout Modes | **DONE** | New SceneMode variants + layout calculations | 3-5 days |
+| S01 | Add Split-Screen Layout Modes | **DONE** | Camera + styled background (no display) + crop | 1-2 days |
 | S02 | Text Keyframe Animation System | **DONE** | TypeScript + Rust types, interpolation, tests | 1-2 days |
 | S03 | Staggered Bullet Point Rendering | Planned | Multi-text segments with timed appearance | 0.5 day |
 | S04 | JSON Timeline Import | Planned | Import command with validation | 2-3 days |
@@ -62,27 +58,93 @@ Enable a "codified editing style" where recordings can use split-screen layouts 
 
 ### S01 - Add Split-Screen Layout Modes ✓ COMPLETE
 
-**Status:** DONE (verified via unit tests and code inspection)
+**Status:** DONE - Rework completed, QA verified
 
-**Implementation Summary:**
-- Added `SplitScreenLeft` and `SplitScreenRight` to SceneMode enum
-- Updated all 3 `same_mode` pattern matches in scene.rs
-- Added InterpolatedScene helper methods:
-  - `is_split_screen()`, `is_transitioning_split_screen()`
-  - `split_camera_x_ratio()`, `split_display_x_ratio()`
-  - `split_camera_transition_opacity()`
-- Added `split_camera` uniforms to rendering pipeline
-- Modified display bounds to use 60% width in split-screen
-- Added graceful fallback when no camera is available
-- Updated UI in SceneTrack.tsx and ConfigSidebar.tsx
-- Added 8 unit tests for scene.rs helpers
+#### Corrected Requirements
 
-**Files Modified:**
-- `crates/project/src/configuration.rs` - SceneMode enum (line 769)
-- `crates/rendering/src/scene.rs` - Transition logic + helpers + tests
-- `crates/rendering/src/lib.rs` - split_camera uniforms, display bounds
-- `apps/desktop/src/routes/editor/Timeline/SceneTrack.tsx` - Icons/labels
-- `apps/desktop/src/routes/editor/ConfigSidebar.tsx` - Mode selector
+**What split-screen IS:**
+```
+┌─────────────────────────────────────────────────────────┐
+│                    │                                    │
+│   Styled Background│         Camera Feed               │
+│   (60% width)      │         (40% width)               │
+│   + Text overlays  │         Cropped/zoomed            │
+│                    │                                    │
+└─────────────────────────────────────────────────────────┘
+```
+
+**What split-screen is NOT:**
+- ❌ Display + Camera side-by-side
+- ❌ PiP camera still visible
+- ❌ Screen recording feed shown
+
+#### Specifications
+
+| Aspect | Value |
+|--------|-------|
+| **Camera position** | Always RIGHT side (40% width) |
+| **Text/background** | Always LEFT side (60% width) |
+| **Background color** | Dark purple/off-black (`#1a1a2e` or similar) |
+| **Camera crop** | Top 10%, bottom 10% cropped (removes black bars) |
+| **Camera horizontal** | Center crop (equal left/right) to fill area |
+| **PiP in split-screen** | DISABLED (no duplicate camera) |
+| **Screen feed** | NOT shown in split-screen |
+
+#### Camera Cropping Detail
+```
+Original camera feed (with black bars):
+┌─────────────────────────────┐
+│▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓│ ← 10% black (crop)
+│                             │
+│         Subject             │
+│      (center frame)         │
+│                             │
+│▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓│ ← 10% black (crop)
+└─────────────────────────────┘
+
+After crop (zoom to fill 40% width area):
+┌─────────────────────────────┐
+│                             │
+│         Subject             │
+│      (center frame)         │
+│                             │
+└─────────────────────────────┘
+```
+
+#### S01 Rework Plan (Simplified)
+
+**Analysis found the rework is simpler than expected:**
+- Camera cropping already implemented (aspect-ratio based)
+- Background config already exists (`BackgroundSource::Color`)
+- Only 2 core changes needed
+
+**Phase 1: Skip display layer in split-screen** (REQUIRED)
+- File: `crates/rendering/src/lib.rs:2159`
+- Add `&& !uniforms.scene.is_split_screen()` to display render condition
+- Background already renders full-screen, just skip display overlay
+
+**Phase 2: Disable PiP in split-screen** (REQUIRED)
+- File: `crates/rendering/src/scene.rs:412`
+- Modify `regular_camera_transition_opacity()` to return 0.0 in split-screen
+- Centralizes mode logic in scene helpers
+
+**Phase 3: Test camera cropping** (VERIFY)
+- Current aspect-ratio cropping may already handle black bars
+- If not sufficient, add fixed 10% vertical crop to `lib.rs:1767-1775`
+
+**Phase 4: Background color** (SKIP)
+- Existing `BackgroundConfiguration.source` supports `Color` variant
+- No new config needed - users can set background color in editor
+
+**Files to Modify:**
+- `crates/rendering/src/lib.rs` - Skip display in split-screen (~1 line)
+- `crates/rendering/src/scene.rs` - Disable PiP in split-screen (~3 lines)
+
+#### Previous Implementation (Keep)
+- SceneMode enum variants (SplitScreenLeft, SplitScreenRight) ✓
+- InterpolatedScene helpers ✓
+- UI in SceneTrack.tsx and ConfigSidebar.tsx ✓
+- Unit tests for scene.rs ✓
 
 ---
 
