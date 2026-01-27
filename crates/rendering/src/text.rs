@@ -773,4 +773,330 @@ mod tests {
         assert!(at_720p[0].font_size < at_1080p[0].font_size);
         assert!(at_1080p[0].font_size < at_4k[0].font_size);
     }
+
+    #[test]
+    fn test_text_visible_at_exact_start_time() {
+        let segment = TextSegment {
+            start: 5.0,
+            end: 10.0,
+            enabled: true,
+            content: "Test".to_string(),
+            center: XY::new(0.5, 0.5),
+            size: XY::new(0.35, 0.2),
+            font_family: "sans-serif".to_string(),
+            font_size: 48.0,
+            font_weight: 700.0,
+            italic: false,
+            color: "#ffffff".to_string(),
+            fade_duration: 0.0,
+            keyframes: TextKeyframes::default(),
+        };
+        let result = prepare_texts(XY::new(1920, 1080), 5.0, &[segment], &[]);
+        assert_eq!(result.len(), 1);
+    }
+
+    #[test]
+    fn test_text_visible_at_exact_end_time() {
+        let segment = TextSegment {
+            start: 5.0,
+            end: 10.0,
+            enabled: true,
+            content: "Test".to_string(),
+            center: XY::new(0.5, 0.5),
+            size: XY::new(0.35, 0.2),
+            font_family: "sans-serif".to_string(),
+            font_size: 48.0,
+            font_weight: 700.0,
+            italic: false,
+            color: "#ffffff".to_string(),
+            fade_duration: 0.0,
+            keyframes: TextKeyframes::default(),
+        };
+        let result = prepare_texts(XY::new(1920, 1080), 10.0, &[segment], &[]);
+        assert_eq!(result.len(), 1);
+    }
+
+    #[test]
+    fn test_identical_keyframe_times() {
+        let keys = vec![
+            TextScalarKeyframe {
+                time: 1.0,
+                value: 0.3,
+            },
+            TextScalarKeyframe {
+                time: 1.0,
+                value: 0.8,
+            },
+        ];
+        let result = interpolate_text_scalar(0.5, &keys, 1.0);
+        assert!(result >= 0.0 && result <= 1.0);
+    }
+
+    #[test]
+    fn test_overlapping_fade_regions() {
+        let segment = TextSegment {
+            start: 0.0,
+            end: 2.0,
+            enabled: true,
+            content: "Test".to_string(),
+            center: XY::new(0.5, 0.5),
+            size: XY::new(0.35, 0.2),
+            font_family: "sans-serif".to_string(),
+            font_size: 48.0,
+            font_weight: 700.0,
+            italic: false,
+            color: "#ffffff".to_string(),
+            fade_duration: 1.5,
+            keyframes: TextKeyframes::default(),
+        };
+        let result = prepare_texts(XY::new(1920, 1080), 1.0, &[segment], &[]);
+        assert_eq!(result.len(), 1);
+        assert!(result[0].opacity >= 0.0 && result[0].opacity <= 1.0);
+    }
+
+    #[test]
+    fn test_position_horizontal_only() {
+        let keys = vec![
+            TextVectorKeyframe {
+                time: 0.0,
+                x: 0.0,
+                y: 0.5,
+            },
+            TextVectorKeyframe {
+                time: 10.0,
+                x: 1.0,
+                y: 0.5,
+            },
+        ];
+        let base = XY::new(0.5, 0.5);
+        let result = interpolate_text_vector(base, &keys, 5.0);
+        assert!((result.x - 0.5).abs() < 1e-6);
+        assert_eq!(result.y, 0.5);
+    }
+
+    #[test]
+    fn test_interpolate_scalar_decreasing() {
+        let keys = vec![
+            TextScalarKeyframe {
+                time: 0.0,
+                value: 1.0,
+            },
+            TextScalarKeyframe {
+                time: 1.0,
+                value: 0.0,
+            },
+        ];
+        let result = interpolate_text_scalar(0.5, &keys, 0.5);
+        assert!((result - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_interpolate_scalar_quarter_points() {
+        let keys = vec![
+            TextScalarKeyframe {
+                time: 0.0,
+                value: 0.0,
+            },
+            TextScalarKeyframe {
+                time: 1.0,
+                value: 1.0,
+            },
+        ];
+        let at_quarter = interpolate_text_scalar(0.0, &keys, 0.25);
+        assert!((at_quarter - 0.25).abs() < 1e-6);
+
+        let at_three_quarters = interpolate_text_scalar(0.0, &keys, 0.75);
+        assert!((at_three_quarters - 0.75).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_position_vertical_only() {
+        let keys = vec![
+            TextVectorKeyframe {
+                time: 0.0,
+                x: 0.5,
+                y: 0.0,
+            },
+            TextVectorKeyframe {
+                time: 10.0,
+                x: 0.5,
+                y: 1.0,
+            },
+        ];
+        let base = XY::new(0.5, 0.5);
+        let result = interpolate_text_vector(base, &keys, 5.0);
+        assert_eq!(result.x, 0.5);
+        assert!((result.y - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_zigzag_position_path() {
+        let keys = vec![
+            TextVectorKeyframe {
+                time: 0.0,
+                x: 0.0,
+                y: 0.0,
+            },
+            TextVectorKeyframe {
+                time: 1.0,
+                x: 1.0,
+                y: 1.0,
+            },
+            TextVectorKeyframe {
+                time: 2.0,
+                x: 0.0,
+                y: 1.0,
+            },
+        ];
+        let base = XY::new(0.5, 0.5);
+
+        let at_half = interpolate_text_vector(base, &keys, 0.5);
+        assert!((at_half.x - 0.5).abs() < 1e-6);
+        assert!((at_half.y - 0.5).abs() < 1e-6);
+
+        let at_1_5 = interpolate_text_vector(base, &keys, 1.5);
+        assert!((at_1_5.x - 0.5).abs() < 1e-6);
+        assert_eq!(at_1_5.y, 1.0);
+    }
+
+    #[test]
+    fn test_non_uniform_keyframe_spacing() {
+        let keys = vec![
+            TextScalarKeyframe {
+                time: 0.0,
+                value: 0.0,
+            },
+            TextScalarKeyframe {
+                time: 0.1,
+                value: 0.5,
+            },
+            TextScalarKeyframe {
+                time: 0.9,
+                value: 0.5,
+            },
+            TextScalarKeyframe {
+                time: 1.0,
+                value: 1.0,
+            },
+        ];
+
+        let at_0_05 = interpolate_text_scalar(0.0, &keys, 0.05);
+        assert!((at_0_05 - 0.25).abs() < 1e-6);
+
+        let at_0_5 = interpolate_text_scalar(0.0, &keys, 0.5);
+        assert_eq!(at_0_5, 0.5);
+
+        let at_0_95 = interpolate_text_scalar(0.0, &keys, 0.95);
+        assert!((at_0_95 - 0.75).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_parse_color_black() {
+        let color = parse_color("#000000");
+        assert!((color[0] - 0.0).abs() < 1e-6);
+        assert!((color[1] - 0.0).abs() < 1e-6);
+        assert!((color[2] - 0.0).abs() < 1e-6);
+        assert_eq!(color[3], 1.0);
+    }
+
+    #[test]
+    fn test_parse_color_white_uppercase() {
+        let color = parse_color("#FFFFFF");
+        assert!((color[0] - 1.0).abs() < 1e-6);
+        assert!((color[1] - 1.0).abs() < 1e-6);
+        assert!((color[2] - 1.0).abs() < 1e-6);
+        assert_eq!(color[3], 1.0);
+    }
+
+    #[test]
+    fn test_parse_color_empty_string() {
+        let color = parse_color("");
+        assert_eq!(color, [1.0, 1.0, 1.0, 1.0]);
+    }
+
+    #[test]
+    fn test_multiple_hidden_indices() {
+        let segments = vec![
+            TextSegment {
+                start: 0.0,
+                end: 10.0,
+                enabled: true,
+                content: "First".to_string(),
+                center: XY::new(0.5, 0.3),
+                size: XY::new(0.35, 0.2),
+                font_family: "sans-serif".to_string(),
+                font_size: 48.0,
+                font_weight: 700.0,
+                italic: false,
+                color: "#ffffff".to_string(),
+                fade_duration: 0.0,
+                keyframes: TextKeyframes::default(),
+            },
+            TextSegment {
+                start: 0.0,
+                end: 10.0,
+                enabled: true,
+                content: "Second".to_string(),
+                center: XY::new(0.5, 0.5),
+                size: XY::new(0.35, 0.2),
+                font_family: "sans-serif".to_string(),
+                font_size: 48.0,
+                font_weight: 700.0,
+                italic: false,
+                color: "#ffffff".to_string(),
+                fade_duration: 0.0,
+                keyframes: TextKeyframes::default(),
+            },
+            TextSegment {
+                start: 0.0,
+                end: 10.0,
+                enabled: true,
+                content: "Third".to_string(),
+                center: XY::new(0.5, 0.7),
+                size: XY::new(0.35, 0.2),
+                font_family: "sans-serif".to_string(),
+                font_size: 48.0,
+                font_weight: 700.0,
+                italic: false,
+                color: "#ffffff".to_string(),
+                fade_duration: 0.0,
+                keyframes: TextKeyframes::default(),
+            },
+        ];
+
+        let result = prepare_texts(XY::new(1920, 1080), 5.0, &segments, &[0, 2]);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].content, "Second");
+    }
+
+    #[test]
+    fn test_keyframe_opacity_during_fade_out() {
+        let segment = TextSegment {
+            start: 0.0,
+            end: 10.0,
+            enabled: true,
+            content: "Test".to_string(),
+            center: XY::new(0.5, 0.5),
+            size: XY::new(0.35, 0.2),
+            font_family: "sans-serif".to_string(),
+            font_size: 48.0,
+            font_weight: 700.0,
+            italic: false,
+            color: "#ffffff".to_string(),
+            fade_duration: 2.0,
+            keyframes: TextKeyframes {
+                position: vec![],
+                opacity: vec![TextScalarKeyframe {
+                    time: 0.0,
+                    value: 0.5,
+                }],
+            },
+        };
+
+        let result = prepare_texts(XY::new(1920, 1080), 9.0, &[segment], &[]);
+        assert_eq!(result.len(), 1);
+        let expected_fade_out = 1.0 / 2.0;
+        let expected_opacity = 0.5 * expected_fade_out;
+        assert!((result[0].opacity - expected_opacity as f32).abs() < 1e-6);
+    }
 }
