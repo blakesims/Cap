@@ -3557,7 +3557,7 @@ function SceneSegmentConfig(props: {
 							"sceneSegments",
 							props.segmentIndex,
 							"mode",
-							v as "default" | "cameraOnly" | "hideCamera",
+							v as "default" | "cameraOnly" | "hideCamera" | "splitScreenLeft" | "splitScreenRight",
 						);
 					}}
 				>
@@ -3565,21 +3565,33 @@ function SceneSegmentConfig(props: {
 						<div class="flex flex-row items-center rounded-[0.5rem] relative border">
 							<KTabs.Trigger
 								value="default"
-								class="z-10 flex-1 py-2.5 text-gray-11 transition-colors duration-100 outline-none ui-selected:text-gray-12 peer"
+								class="z-10 flex-1 py-2.5 text-gray-11 transition-colors duration-100 outline-none ui-selected:text-gray-12 peer text-xs"
 							>
 								Default
 							</KTabs.Trigger>
 							<KTabs.Trigger
 								value="cameraOnly"
-								class="z-10 flex-1 py-2.5 text-gray-11 transition-colors duration-100 outline-none ui-selected:text-gray-12 peer"
+								class="z-10 flex-1 py-2.5 text-gray-11 transition-colors duration-100 outline-none ui-selected:text-gray-12 peer text-xs"
 							>
-								Camera Only
+								Camera
 							</KTabs.Trigger>
 							<KTabs.Trigger
 								value="hideCamera"
-								class="z-10 flex-1 py-2.5 text-gray-11 transition-colors duration-100 outline-none ui-selected:text-gray-12 peer"
+								class="z-10 flex-1 py-2.5 text-gray-11 transition-colors duration-100 outline-none ui-selected:text-gray-12 peer text-xs"
 							>
-								Hide Camera
+								Hide
+							</KTabs.Trigger>
+							<KTabs.Trigger
+								value="splitScreenLeft"
+								class="z-10 flex-1 py-2.5 text-gray-11 transition-colors duration-100 outline-none ui-selected:text-gray-12 peer text-xs"
+							>
+								Split L
+							</KTabs.Trigger>
+							<KTabs.Trigger
+								value="splitScreenRight"
+								class="z-10 flex-1 py-2.5 text-gray-11 transition-colors duration-100 outline-none ui-selected:text-gray-12 peer text-xs"
+							>
+								Split R
 							</KTabs.Trigger>
 							<KTabs.Indicator class="absolute flex p-px inset-0 transition-transform peer-focus-visible:outline outline-2 outline-blue-9 outline-offset-2 rounded-[0.6rem] overflow-hidden">
 								<div class="flex-1 bg-gray-3" />
@@ -3592,10 +3604,14 @@ function SceneSegmentConfig(props: {
 								style={{
 									left:
 										props.segment.mode === "cameraOnly"
-											? "50%"
+											? "30%"
 											: props.segment.mode === "hideCamera"
-												? "83.33%"
-												: "16.67%",
+												? "50%"
+												: props.segment.mode === "splitScreenLeft"
+													? "70%"
+													: props.segment.mode === "splitScreenRight"
+														? "90%"
+														: "10%",
 								}}
 							/>
 							<div
@@ -3603,10 +3619,14 @@ function SceneSegmentConfig(props: {
 								style={{
 									left:
 										props.segment.mode === "cameraOnly"
-											? "50%"
+											? "30%"
 											: props.segment.mode === "hideCamera"
-												? "83.33%"
-												: "16.67%",
+												? "50%"
+												: props.segment.mode === "splitScreenLeft"
+													? "70%"
+													: props.segment.mode === "splitScreenRight"
+														? "90%"
+														: "10%",
 								}}
 							/>
 							<div class="p-2.5 rounded-md bg-gray-2 border border-gray-3">
@@ -3615,7 +3635,11 @@ function SceneSegmentConfig(props: {
 										? "Shows only the camera feed"
 										: props.segment.mode === "hideCamera"
 											? "Shows only the screen recording"
-											: "Shows both screen and camera"}
+											: props.segment.mode === "splitScreenLeft"
+												? "Camera left 40%, display right 60%"
+												: props.segment.mode === "splitScreenRight"
+													? "Display left 60%, camera right 40%"
+													: "Shows both screen and camera"}
 								</div>
 							</div>
 						</div>

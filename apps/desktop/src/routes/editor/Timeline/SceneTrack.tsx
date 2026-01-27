@@ -65,6 +65,10 @@ export function SceneTrack(props: {
 				return <IconLucideVideo class="size-3.5" />;
 			case "hideCamera":
 				return <IconLucideEyeOff class="size-3.5" />;
+			case "splitScreenLeft":
+				return <IconLucideMonitor class="size-3.5" />;
+			case "splitScreenRight":
+				return <IconLucideMonitor class="size-3.5" />;
 			default:
 				return <IconLucideMonitor class="size-3.5" />;
 		}
@@ -76,6 +80,10 @@ export function SceneTrack(props: {
 				return "Camera Only";
 			case "hideCamera":
 				return "Hide Camera";
+			case "splitScreenLeft":
+				return "Split Left";
+			case "splitScreenRight":
+				return "Split Right";
 			default:
 				return "Default";
 		}

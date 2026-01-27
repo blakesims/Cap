@@ -694,6 +694,30 @@ impl MaskSegment {
     }
 }
 
+#[derive(Type, Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TextScalarKeyframe {
+    pub time: f64,
+    pub value: f64,
+}
+
+#[derive(Type, Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TextVectorKeyframe {
+    pub time: f64,
+    pub x: f64,
+    pub y: f64,
+}
+
+#[derive(Type, Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TextKeyframes {
+    #[serde(default)]
+    pub position: Vec<TextVectorKeyframe>,
+    #[serde(default)]
+    pub opacity: Vec<TextScalarKeyframe>,
+}
+
 #[derive(Type, Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct TextSegment {
@@ -719,6 +743,8 @@ pub struct TextSegment {
     pub color: String,
     #[serde(default = "TextSegment::default_fade_duration")]
     pub fade_duration: f64,
+    #[serde(default)]
+    pub keyframes: TextKeyframes,
 }
 
 impl TextSegment {
@@ -766,6 +792,8 @@ pub enum SceneMode {
     Default,
     CameraOnly,
     HideCamera,
+    SplitScreenLeft,
+    SplitScreenRight,
 }
 
 #[derive(Type, Serialize, Deserialize, Clone, Debug)]

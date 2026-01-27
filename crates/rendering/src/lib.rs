@@ -664,6 +664,7 @@ pub struct ProjectUniforms {
     display: CompositeVideoFrameUniforms,
     camera: Option<CompositeVideoFrameUniforms>,
     camera_only: Option<CompositeVideoFrameUniforms>,
+    split_camera: Option<CompositeVideoFrameUniforms>,
     interpolated_cursor: Option<InterpolatedCursorPosition>,
     pub prev_cursor: Option<InterpolatedCursorPosition>,
     pub project: ProjectConfiguration,
@@ -1403,8 +1404,23 @@ impl ProjectUniforms {
                 (crop.position.y + crop.size.y) as f64,
             ));
 
-            let display_offset = Self::display_offset(options, project, resolution_base);
-            let display_size = Self::display_size(options, project, resolution_base);
+            let has_camera = options.camera_size.is_some() && !project.camera.hide;
+            let (display_offset, display_size) = if scene.is_transitioning_split_screen()
+                && has_camera
+            {
+                let display_x_ratio = scene.split_display_x_ratio();
+                let display_width = output_size.x * 0.6;
+                let display_x = display_x_ratio * output_size.x;
+
+                let split_offset = Coord::<FrameSpace>::new(XY::new(display_x, 0.0));
+                let split_size = Coord::<FrameSpace>::new(XY::new(display_width, output_size.y));
+
+                (split_offset, split_size)
+            } else {
+                let offset = Self::display_offset(options, project, resolution_base);
+                let size = Self::display_size(options, project, resolution_base);
+                (offset, size)
+            };
 
             let (start, end) =
                 Self::display_bounds(&zoom, display_offset, display_size, output_size);
@@ -1732,6 +1748,68 @@ impl ProjectUniforms {
                 }
             });
 
+        let split_camera = options
+            .camera_size
+            .filter(|_| !project.camera.hide && scene.is_transitioning_split_screen())
+            .map(|camera_size| {
+                let output_size = [output_size.0 as f32, output_size.1 as f32];
+                let frame_size = [camera_size.x as f32, camera_size.y as f32];
+
+                let camera_width = output_size[0] * 0.4;
+                let camera_height = output_size[1];
+                let camera_x = scene.split_camera_x_ratio() as f32 * output_size[0];
+
+                let target_bounds = [camera_x, 0.0, camera_x + camera_width, camera_height];
+
+                let target_aspect = camera_width / camera_height;
+                let aspect = frame_size[0] / frame_size[1];
+
+                let crop_bounds = if aspect > target_aspect {
+                    let visible_width = frame_size[1] * target_aspect;
+                    let crop_x = (frame_size[0] - visible_width) / 2.0;
+                    [crop_x, 0.0, frame_size[0] - crop_x, frame_size[1]]
+                } else {
+                    let visible_height = frame_size[0] / target_aspect;
+                    let crop_y = (frame_size[1] - visible_height) / 2.0;
+                    [0.0, crop_y, frame_size[0], frame_size[1] - crop_y]
+                };
+
+                CompositeVideoFrameUniforms {
+                    output_size,
+                    frame_size,
+                    crop_bounds,
+                    target_bounds,
+                    target_size: [camera_width, camera_height],
+                    rounding_px: 0.0,
+                    rounding_type: rounding_type_value(project.camera.rounding_type),
+                    mirror_x: if project.camera.mirror { 1.0 } else { 0.0 },
+                    motion_blur_vector: [0.0; 2],
+                    motion_blur_zoom_center: [0.0; 2],
+                    motion_blur_params: [0.0; 4],
+                    shadow: project.camera.shadow,
+                    shadow_size: project
+                        .camera
+                        .advanced_shadow
+                        .as_ref()
+                        .map_or(50.0, |s| s.size),
+                    shadow_opacity: project
+                        .camera
+                        .advanced_shadow
+                        .as_ref()
+                        .map_or(18.0, |s| s.opacity),
+                    shadow_blur: project
+                        .camera
+                        .advanced_shadow
+                        .as_ref()
+                        .map_or(50.0, |s| s.blur),
+                    opacity: scene.split_camera_transition_opacity() as f32,
+                    border_enabled: 0.0,
+                    border_width: 0.0,
+                    _padding1: [0.0; 4],
+                    border_color: [0.0, 0.0, 0.0, 0.0],
+                }
+            });
+
         let masks = project
             .timeline
             .as_ref()
@@ -1764,6 +1842,7 @@ impl ProjectUniforms {
             display,
             camera,
             camera_only,
+            split_camera,
             project: project.clone(),
             zoom,
             scene,
@@ -1884,6 +1963,7 @@ pub struct RendererLayers {
     cursor: CursorLayer,
     camera: CameraLayer,
     camera_only: CameraLayer,
+    split_camera: CameraLayer,
     mask: MaskLayer,
     text: TextLayer,
     captions: CaptionsLayer,
@@ -1906,6 +1986,7 @@ impl RendererLayers {
             cursor: CursorLayer::new(device),
             camera: CameraLayer::new(device),
             camera_only: CameraLayer::new(device),
+            split_camera: CameraLayer::new(device),
             mask: MaskLayer::new(device),
             text: TextLayer::new(device, queue),
             captions: CaptionsLayer::new(device, queue),
@@ -1932,6 +2013,8 @@ impl RendererLayers {
         if let (Some(cw), Some(ch)) = (camera_width, camera_height) {
             self.camera.prepare_for_video_dimensions(device, cw, ch);
             self.camera_only
+                .prepare_for_video_dimensions(device, cw, ch);
+            self.split_camera
                 .prepare_for_video_dimensions(device, cw, ch);
         }
     }
@@ -1996,6 +2079,18 @@ impl RendererLayers {
             }),
         );
 
+        self.split_camera.prepare(
+            &constants.device,
+            &constants.queue,
+            uniforms.split_camera,
+            constants.options.camera_size.and_then(|size| {
+                segment_frames
+                    .camera_frame
+                    .as_ref()
+                    .map(|frame| (size, frame, segment_frames.recording_time))
+            }),
+        );
+
         self.text.prepare(
             &constants.device,
             &constants.queue,
@@ -2043,6 +2138,7 @@ impl RendererLayers {
         self.display.copy_to_texture(encoder);
         self.camera.copy_to_texture(encoder);
         self.camera_only.copy_to_texture(encoder);
+        self.split_camera.copy_to_texture(encoder);
 
         {
             let mut pass = render_pass!(
@@ -2076,6 +2172,11 @@ impl RendererLayers {
         if uniforms.scene.is_transitioning_camera_only() {
             let mut pass = render_pass!(session.current_texture_view(), wgpu::LoadOp::Load);
             self.camera_only.render(&mut pass);
+        }
+
+        if uniforms.scene.is_transitioning_split_screen() {
+            let mut pass = render_pass!(session.current_texture_view(), wgpu::LoadOp::Load);
+            self.split_camera.render(&mut pass);
         }
 
         // Also render regular camera overlay during transitions when its opacity > 0

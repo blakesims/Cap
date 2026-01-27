@@ -252,8 +252,8 @@ impl FfmpegDecoder {
             let first_frame_result = (&mut frames).flatten().next();
 
             if first_frame_result.is_none() && is_hw {
-                drop(frames);
-                drop(this);
+                let _ = frames;
+                let _ = this;
 
                 let mut sw_this = match cap_video_decode::FFmpegDecoder::new(path.clone(), None) {
                     Err(e) => {

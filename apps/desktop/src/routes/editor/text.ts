@@ -1,5 +1,21 @@
 import type { XY } from "~/utils/tauri";
 
+export type TextScalarKeyframe = {
+	time: number;
+	value: number;
+};
+
+export type TextVectorKeyframe = {
+	time: number;
+	x: number;
+	y: number;
+};
+
+export type TextKeyframes = {
+	position: TextVectorKeyframe[];
+	opacity: TextScalarKeyframe[];
+};
+
 export type TextSegment = {
 	start: number;
 	end: number;
@@ -13,6 +29,7 @@ export type TextSegment = {
 	italic: boolean;
 	color: string;
 	fadeDuration: number;
+	keyframes: TextKeyframes;
 };
 
 export const defaultTextSegment = (
@@ -31,4 +48,5 @@ export const defaultTextSegment = (
 	italic: false,
 	color: "#ffffff",
 	fadeDuration: 0.15,
+	keyframes: { position: [], opacity: [] },
 });

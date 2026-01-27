@@ -97,6 +97,8 @@ impl InterpolatedScene {
                         (SceneMode::CameraOnly, SceneMode::CameraOnly)
                             | (SceneMode::Default, SceneMode::Default)
                             | (SceneMode::HideCamera, SceneMode::HideCamera)
+                            | (SceneMode::SplitScreenLeft, SceneMode::SplitScreenLeft)
+                            | (SceneMode::SplitScreenRight, SceneMode::SplitScreenRight)
                     );
                     if gap < MIN_GAP_FOR_TRANSITION && same_mode {
                         // Small gap between same modes, no transition needed
@@ -121,6 +123,8 @@ impl InterpolatedScene {
                         (SceneMode::CameraOnly, SceneMode::CameraOnly)
                             | (SceneMode::Default, SceneMode::Default)
                             | (SceneMode::HideCamera, SceneMode::HideCamera)
+                            | (SceneMode::SplitScreenLeft, SceneMode::SplitScreenLeft)
+                            | (SceneMode::SplitScreenRight, SceneMode::SplitScreenRight)
                     );
                     if gap < MIN_GAP_FOR_TRANSITION && same_mode {
                         // Keep the current mode without transitioning
@@ -169,6 +173,8 @@ impl InterpolatedScene {
                     (SceneMode::CameraOnly, SceneMode::CameraOnly)
                         | (SceneMode::Default, SceneMode::Default)
                         | (SceneMode::HideCamera, SceneMode::HideCamera)
+                        | (SceneMode::SplitScreenLeft, SceneMode::SplitScreenLeft)
+                        | (SceneMode::SplitScreenRight, SceneMode::SplitScreenRight)
                 );
                 if gap < MIN_GAP_FOR_TRANSITION && same_mode {
                     (prev_seg.mode, prev_seg.mode, 1.0)
@@ -288,6 +294,8 @@ impl InterpolatedScene {
             SceneMode::Default => (1.0, 1.0, 1.0),
             SceneMode::CameraOnly => (1.0, 1.0, 1.0),
             SceneMode::HideCamera => (0.0, 1.0, 1.0),
+            SceneMode::SplitScreenLeft => (1.0, 1.0, 1.0),
+            SceneMode::SplitScreenRight => (1.0, 1.0, 1.0),
         }
     }
 
@@ -306,6 +314,81 @@ impl InterpolatedScene {
     pub fn is_transitioning_camera_only(&self) -> bool {
         matches!(self.from_mode, SceneMode::CameraOnly)
             || matches!(self.to_mode, SceneMode::CameraOnly)
+    }
+
+    pub fn is_split_screen(&self) -> bool {
+        matches!(
+            self.scene_mode,
+            SceneMode::SplitScreenLeft | SceneMode::SplitScreenRight
+        )
+    }
+
+    pub fn is_transitioning_split_screen(&self) -> bool {
+        matches!(
+            self.from_mode,
+            SceneMode::SplitScreenLeft | SceneMode::SplitScreenRight
+        ) || matches!(
+            self.to_mode,
+            SceneMode::SplitScreenLeft | SceneMode::SplitScreenRight
+        )
+    }
+
+    pub fn split_camera_x_ratio(&self) -> f64 {
+        let start_x = match self.from_mode {
+            SceneMode::SplitScreenLeft => 0.0,
+            SceneMode::SplitScreenRight => 0.6,
+            _ => 0.0,
+        };
+        let end_x = match self.to_mode {
+            SceneMode::SplitScreenLeft => 0.0,
+            SceneMode::SplitScreenRight => 0.6,
+            _ => 0.0,
+        };
+        Self::lerp(start_x, end_x, self.transition_progress)
+    }
+
+    pub fn split_display_x_ratio(&self) -> f64 {
+        let start_x = match self.from_mode {
+            SceneMode::SplitScreenLeft => 0.4,
+            SceneMode::SplitScreenRight => 0.0,
+            _ => 0.0,
+        };
+        let end_x = match self.to_mode {
+            SceneMode::SplitScreenLeft => 0.4,
+            SceneMode::SplitScreenRight => 0.0,
+            _ => 0.0,
+        };
+        Self::lerp(start_x, end_x, self.transition_progress)
+    }
+
+    pub fn split_camera_transition_opacity(&self) -> f64 {
+        if matches!(
+            self.from_mode,
+            SceneMode::SplitScreenLeft | SceneMode::SplitScreenRight
+        ) && !matches!(
+            self.to_mode,
+            SceneMode::SplitScreenLeft | SceneMode::SplitScreenRight
+        ) {
+            1.0 - self.transition_progress
+        } else if !matches!(
+            self.from_mode,
+            SceneMode::SplitScreenLeft | SceneMode::SplitScreenRight
+        ) && matches!(
+            self.to_mode,
+            SceneMode::SplitScreenLeft | SceneMode::SplitScreenRight
+        ) {
+            self.transition_progress
+        } else if matches!(
+            self.from_mode,
+            SceneMode::SplitScreenLeft | SceneMode::SplitScreenRight
+        ) && matches!(
+            self.to_mode,
+            SceneMode::SplitScreenLeft | SceneMode::SplitScreenRight
+        ) {
+            1.0
+        } else {
+            0.0
+        }
     }
 
     pub fn camera_only_transition_opacity(&self) -> f64 {
@@ -344,5 +427,135 @@ impl InterpolatedScene {
         } else {
             self.camera_opacity
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_scene(from: SceneMode, to: SceneMode, progress: f64) -> InterpolatedScene {
+        InterpolatedScene {
+            camera_opacity: 1.0,
+            screen_opacity: 1.0,
+            camera_scale: 1.0,
+            scene_mode: if progress > 0.5 { to } else { from },
+            transition_progress: progress,
+            from_mode: from,
+            to_mode: to,
+            screen_blur: 0.0,
+            camera_only_zoom: 1.0,
+            camera_only_blur: 0.0,
+        }
+    }
+
+    #[test]
+    fn test_is_split_screen() {
+        let scene_left = make_scene(SceneMode::SplitScreenLeft, SceneMode::SplitScreenLeft, 1.0);
+        let scene_right = make_scene(
+            SceneMode::SplitScreenRight,
+            SceneMode::SplitScreenRight,
+            1.0,
+        );
+        let scene_default = make_scene(SceneMode::Default, SceneMode::Default, 1.0);
+
+        assert!(scene_left.is_split_screen());
+        assert!(scene_right.is_split_screen());
+        assert!(!scene_default.is_split_screen());
+    }
+
+    #[test]
+    fn test_is_transitioning_split_screen() {
+        let entering = make_scene(SceneMode::Default, SceneMode::SplitScreenLeft, 0.5);
+        let exiting = make_scene(SceneMode::SplitScreenRight, SceneMode::Default, 0.5);
+        let between = make_scene(SceneMode::SplitScreenLeft, SceneMode::SplitScreenRight, 0.5);
+        let no_split = make_scene(SceneMode::Default, SceneMode::CameraOnly, 0.5);
+
+        assert!(entering.is_transitioning_split_screen());
+        assert!(exiting.is_transitioning_split_screen());
+        assert!(between.is_transitioning_split_screen());
+        assert!(!no_split.is_transitioning_split_screen());
+    }
+
+    #[test]
+    fn test_split_camera_x_ratio_static() {
+        let left = make_scene(SceneMode::SplitScreenLeft, SceneMode::SplitScreenLeft, 1.0);
+        let right = make_scene(
+            SceneMode::SplitScreenRight,
+            SceneMode::SplitScreenRight,
+            1.0,
+        );
+
+        assert!((left.split_camera_x_ratio() - 0.0).abs() < 0.001);
+        assert!((right.split_camera_x_ratio() - 0.6).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_split_camera_x_ratio_transition() {
+        let left_to_right_start =
+            make_scene(SceneMode::SplitScreenLeft, SceneMode::SplitScreenRight, 0.0);
+        let left_to_right_mid =
+            make_scene(SceneMode::SplitScreenLeft, SceneMode::SplitScreenRight, 0.5);
+        let left_to_right_end =
+            make_scene(SceneMode::SplitScreenLeft, SceneMode::SplitScreenRight, 1.0);
+
+        assert!((left_to_right_start.split_camera_x_ratio() - 0.0).abs() < 0.001);
+        assert!((left_to_right_mid.split_camera_x_ratio() - 0.3).abs() < 0.001);
+        assert!((left_to_right_end.split_camera_x_ratio() - 0.6).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_split_display_x_ratio_static() {
+        let left = make_scene(SceneMode::SplitScreenLeft, SceneMode::SplitScreenLeft, 1.0);
+        let right = make_scene(
+            SceneMode::SplitScreenRight,
+            SceneMode::SplitScreenRight,
+            1.0,
+        );
+
+        assert!((left.split_display_x_ratio() - 0.4).abs() < 0.001);
+        assert!((right.split_display_x_ratio() - 0.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_split_display_x_ratio_transition() {
+        let left_to_right_start =
+            make_scene(SceneMode::SplitScreenLeft, SceneMode::SplitScreenRight, 0.0);
+        let left_to_right_mid =
+            make_scene(SceneMode::SplitScreenLeft, SceneMode::SplitScreenRight, 0.5);
+        let left_to_right_end =
+            make_scene(SceneMode::SplitScreenLeft, SceneMode::SplitScreenRight, 1.0);
+
+        assert!((left_to_right_start.split_display_x_ratio() - 0.4).abs() < 0.001);
+        assert!((left_to_right_mid.split_display_x_ratio() - 0.2).abs() < 0.001);
+        assert!((left_to_right_end.split_display_x_ratio() - 0.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_split_camera_transition_opacity() {
+        let entering = make_scene(SceneMode::Default, SceneMode::SplitScreenLeft, 0.5);
+        let exiting = make_scene(SceneMode::SplitScreenRight, SceneMode::Default, 0.5);
+        let between = make_scene(SceneMode::SplitScreenLeft, SceneMode::SplitScreenRight, 0.5);
+        let no_split = make_scene(SceneMode::Default, SceneMode::CameraOnly, 0.5);
+
+        assert!((entering.split_camera_transition_opacity() - 0.5).abs() < 0.001);
+        assert!((exiting.split_camera_transition_opacity() - 0.5).abs() < 0.001);
+        assert!((between.split_camera_transition_opacity() - 1.0).abs() < 0.001);
+        assert!((no_split.split_camera_transition_opacity() - 0.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_get_scene_values_split_screen() {
+        let (cam_opacity, screen_opacity, cam_scale) =
+            InterpolatedScene::get_scene_values(&SceneMode::SplitScreenLeft);
+        assert!((cam_opacity - 1.0).abs() < 0.001);
+        assert!((screen_opacity - 1.0).abs() < 0.001);
+        assert!((cam_scale - 1.0).abs() < 0.001);
+
+        let (cam_opacity, screen_opacity, cam_scale) =
+            InterpolatedScene::get_scene_values(&SceneMode::SplitScreenRight);
+        assert!((cam_opacity - 1.0).abs() < 0.001);
+        assert!((screen_opacity - 1.0).abs() < 0.001);
+        assert!((cam_scale - 1.0).abs() < 0.001);
     }
 }
