@@ -366,6 +366,9 @@ Minimize `useEffect` usage: compute during render, handle logic in event handler
 - **Timeline segments**: `recordingSegment` property = pause/resume chunk index. Each pause/resume creates a new chunk with incrementing index.
 - **Selection types**: `editorState.timeline.selection` has types: `clip`, `zoom`, `mask`, `text`, `scene`. Always check `.type` before accessing `.indices`.
 - **Audio playback**: Pre-decode at output device sample rate on editor open. Use `ArcSwap` for lock-free sharing (never `Mutex` in audio callbacks). See `crates/editor/src/audio.rs`.
+- **Audio vs video rendering**: Video uses dynamic `get_segment_time()` on each frame (always reflects current timeline). Audio pre-renders entire timeline for performance, requiring explicit cache invalidation on edits.
+- **Timeline cache invalidation**: Never use count-based invalidation (e.g., `segment_count`) for timeline caches. Operations like split+delete can change content while preserving count. Use content hashing via `compute_timeline_hash()` which hashes all segment boundaries.
+- **Float hashing**: When hashing f64 values for cache keys, quantize to fixed precision first (e.g., `(f * 1_000_000.0).round() as i64`). Raw `.to_bits()` hashing fails due to floating-point arithmetic non-associativity.
 
 ## Conventions
 - **CRITICAL: NO CODE COMMENTS**: Never add any form of comments to code. This includes:
