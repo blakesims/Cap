@@ -441,18 +441,44 @@ cargo clippy -p cap-rendering -- -D warnings
 ## 7. Remaining Stories (Planned)
 
 ### S03 - Staggered Bullet Point Rendering
-- Documentation/usage pattern (no code)
-- Depends on S02 completion
+**Complexity:** Low (documentation only)
+
+No code changes needed. Text segments + keyframes already support this pattern:
+```json
+{
+  "textSegments": [
+    { "start": 1.0, "end": 10.0, "content": "Point 1", "keyframes": { "opacity": [{"time": 0, "value": 0}, {"time": 0.5, "value": 1}] }},
+    { "start": 2.0, "end": 10.0, "content": "Point 2", "keyframes": { "opacity": [{"time": 0, "value": 0}, {"time": 0.5, "value": 1}] }},
+    { "start": 3.0, "end": 10.0, "content": "Point 3", "keyframes": { "opacity": [{"time": 0, "value": 0}, {"time": 0.5, "value": 1}] }}
+  ]
+}
+```
+**Deliverable:** Example JSON + documentation for LLM prompt engineering.
 
 ### S04 - JSON Timeline Import
-- Tauri command for importing LLM-generated JSON
-- Validation and merge/replace modes
-- Depends on S02 completion
+**Complexity:** Medium
+
+**Requirements to define:**
+1. JSON format LLM will produce (subset of ProjectConfiguration)
+2. Merge vs replace behavior for existing segments
+3. Validation rules (time ranges, required fields)
+4. Error handling UX
+
+**Implementation:**
+- Tauri command: `import_timeline_json(path: String, mode: MergeMode)`
+- Reuse existing `ProjectConfiguration` serde - just deserialize and merge
+- Add `#[serde(default = "fn")]` for any new fields (learned from S01)
 
 ### S05 - Editor UI Polish
-- Import dialog component
-- Visual improvements
-- Depends on S04 completion
+**Complexity:** Variable (scope TBD)
+
+**Potential features:**
+- [ ] Import button in editor toolbar
+- [ ] Camera crop sliders in settings (cropTop/cropBottom now exist)
+- [ ] Split-screen background color picker
+- [ ] Text segment visual editor
+
+**Recommendation:** Start minimal - just add import button. Other UI can follow.
 
 ---
 
@@ -471,6 +497,30 @@ cargo clippy -p cap-rendering -- -D warnings
 - After Rust changes, rebuild desktop to regenerate `tauri.ts` types
 - TypeScript `text.ts` types should match auto-generated types
 
+### Learnings from S01/S02 Implementation
+
+**1. Validate requirements with QA early**
+- S01 initially built display+camera; actual need was camera+background
+- Quick manual test after implementation catches architectural mismatches
+
+**2. Leverage existing infrastructure**
+- Background already rendered full-screen (no changes needed)
+- Camera crop patterns existed (just needed config exposure)
+- Check what's already there before building new
+
+**3. Subagent plan review reduces rework**
+- Review agent reduced S01 rework from 4 phases → 2 phases
+- Run plan review before implementation on S04/S05
+
+**4. Serde defaults need explicit functions**
+- `#[serde(default)]` uses type default (0.0 for f32)
+- Use `#[serde(default = "Type::fn")]` for custom defaults
+- Critical for existing configs that lack new fields
+
+**5. Debug logging accelerates diagnosis**
+- `tracing::debug!` immediately revealed config wasn't being read
+- Add early when building features that touch config
+
 ---
 
 ## 9. Files Summary
@@ -478,9 +528,9 @@ cargo clippy -p cap-rendering -- -D warnings
 ### S01 Files (DONE)
 | File | Status |
 |------|--------|
-| `crates/project/src/configuration.rs` | ✓ SceneMode enum |
-| `crates/rendering/src/scene.rs` | ✓ Helpers + tests |
-| `crates/rendering/src/lib.rs` | ✓ split_camera + display bounds |
+| `crates/project/src/configuration.rs` | ✓ SceneMode enum + camera crop config |
+| `crates/rendering/src/scene.rs` | ✓ Helpers + PiP disable in split-screen |
+| `crates/rendering/src/lib.rs` | ✓ Split-screen render + camera crop (all modes) |
 | `apps/desktop/.../SceneTrack.tsx` | ✓ Icons/labels |
 | `apps/desktop/.../ConfigSidebar.tsx` | ✓ Mode selector |
 
