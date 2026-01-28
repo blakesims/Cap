@@ -1,5 +1,6 @@
 use cap_project::{
-    SceneMode, SceneSegment, TextKeyframes, TextScalarKeyframe, TextSegment, TextVectorKeyframe, XY,
+    OverlayItem, OverlayItemStyle, OverlaySegment, OverlayType, SceneMode, SceneSegment,
+    TextKeyframes, TextScalarKeyframe, TextSegment, TextVectorKeyframe, XY,
 };
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -80,12 +81,51 @@ pub struct ImportSceneChange {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
+pub enum ImportOverlayType {
+    Split,
+    #[serde(alias = "fullScreen")]
+    Fullscreen,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub enum ImportOverlayItemStyle {
+    Title,
+    Bullet,
+    Numbered,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportOverlayItem {
+    #[serde(default)]
+    pub delay: f64,
+    pub text: String,
+    #[serde(default)]
+    pub style: Option<ImportOverlayItemStyle>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportOverlay {
+    pub start: f64,
+    pub end: f64,
+    #[serde(rename = "type")]
+    pub overlay_type: ImportOverlayType,
+    #[serde(default)]
+    pub items: Vec<ImportOverlayItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
 pub struct TimelineImport {
     pub version: String,
     #[serde(default)]
     pub text_segments: Vec<ImportTextSegment>,
     #[serde(default)]
     pub scene_changes: Vec<ImportSceneChange>,
+    #[serde(default)]
+    pub overlays: Vec<ImportOverlay>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Type, Default)]
@@ -101,6 +141,7 @@ pub enum ImportMergeMode {
 pub struct ImportResult {
     pub text_segments_imported: u32,
     pub scene_segments_created: u32,
+    pub overlay_segments_imported: u32,
     pub warnings: Vec<String>,
 }
 
@@ -112,7 +153,7 @@ pub enum TimelineImportError {
     #[error("JSON parse error: {0}")]
     ParseError(#[from] serde_json::Error),
 
-    #[error("Unsupported version: expected '1.0.0', got '{0}'")]
+    #[error("Unsupported version: expected '1.0.0' or '2.0.0', got '{0}'")]
     UnsupportedVersion(String),
 
     #[error("Invalid time range in segment {index}: start ({start}) must be less than end ({end})")]
@@ -132,6 +173,22 @@ pub enum TimelineImportError {
 
     #[error("Failed to write configuration: {0}")]
     WriteError(String),
+
+    #[error("Invalid time range in overlay {index}: start ({start}) must be less than end ({end})")]
+    InvalidOverlayTimeRange { index: usize, start: f64, end: f64 },
+
+    #[error("Overlay {index} has no items")]
+    EmptyOverlayItems { index: usize },
+
+    #[error("Empty text in overlay {overlay_index}, item {item_index}")]
+    EmptyOverlayItemText { overlay_index: usize, item_index: usize },
+
+    #[error("Negative delay in overlay {overlay_index}, item {item_index}: {delay}")]
+    NegativeOverlayItemDelay {
+        overlay_index: usize,
+        item_index: usize,
+        delay: f64,
+    },
 }
 
 impl From<TimelineImportError> for String {
@@ -143,7 +200,7 @@ impl From<TimelineImportError> for String {
 pub fn validate_import(import: &TimelineImport) -> Result<Vec<String>, TimelineImportError> {
     let mut warnings = Vec::new();
 
-    if import.version != "1.0.0" {
+    if import.version != "1.0.0" && import.version != "2.0.0" {
         return Err(TimelineImportError::UnsupportedVersion(
             import.version.clone(),
         ));
@@ -235,7 +292,56 @@ pub fn validate_import(import: &TimelineImport) -> Result<Vec<String>, TimelineI
         prev_time = Some(change.time);
     }
 
+    validate_overlays(&import.overlays, &mut warnings)?;
+
     Ok(warnings)
+}
+
+fn validate_overlays(
+    overlays: &[ImportOverlay],
+    warnings: &mut Vec<String>,
+) -> Result<(), TimelineImportError> {
+    for (index, overlay) in overlays.iter().enumerate() {
+        if overlay.end <= overlay.start {
+            return Err(TimelineImportError::InvalidOverlayTimeRange {
+                index,
+                start: overlay.start,
+                end: overlay.end,
+            });
+        }
+
+        if overlay.items.is_empty() {
+            return Err(TimelineImportError::EmptyOverlayItems { index });
+        }
+
+        let segment_duration = overlay.end - overlay.start;
+
+        for (item_index, item) in overlay.items.iter().enumerate() {
+            if item.text.trim().is_empty() {
+                return Err(TimelineImportError::EmptyOverlayItemText {
+                    overlay_index: index,
+                    item_index,
+                });
+            }
+
+            if item.delay < 0.0 {
+                return Err(TimelineImportError::NegativeOverlayItemDelay {
+                    overlay_index: index,
+                    item_index,
+                    delay: item.delay,
+                });
+            }
+
+            if item.delay > segment_duration {
+                warnings.push(format!(
+                    "Overlay {index}, item {item_index}: delay ({:.2}s) exceeds segment duration ({:.2}s)",
+                    item.delay, segment_duration
+                ));
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn clamp_position(val: f64) -> f64 {
@@ -319,6 +425,43 @@ pub fn transform_scene_mode(mode: &ImportSceneMode) -> SceneMode {
     }
 }
 
+fn transform_overlay_type(overlay_type: &ImportOverlayType) -> OverlayType {
+    match overlay_type {
+        ImportOverlayType::Split => OverlayType::Split,
+        ImportOverlayType::Fullscreen => OverlayType::FullScreen,
+    }
+}
+
+fn transform_overlay_item_style(style: &Option<ImportOverlayItemStyle>) -> OverlayItemStyle {
+    match style {
+        Some(ImportOverlayItemStyle::Title) => OverlayItemStyle::Title,
+        Some(ImportOverlayItemStyle::Bullet) => OverlayItemStyle::Bullet,
+        Some(ImportOverlayItemStyle::Numbered) => OverlayItemStyle::Numbered,
+        None => OverlayItemStyle::Title,
+    }
+}
+
+fn transform_overlay_item(item: &ImportOverlayItem) -> OverlayItem {
+    OverlayItem {
+        delay: item.delay,
+        content: item.text.clone(),
+        style: transform_overlay_item_style(&item.style),
+    }
+}
+
+pub fn transform_overlay(overlay: &ImportOverlay) -> OverlaySegment {
+    OverlaySegment {
+        start: overlay.start,
+        end: overlay.end,
+        overlay_type: transform_overlay_type(&overlay.overlay_type),
+        items: overlay.items.iter().map(transform_overlay_item).collect(),
+    }
+}
+
+pub fn transform_overlays(overlays: &[ImportOverlay]) -> Vec<OverlaySegment> {
+    overlays.iter().map(transform_overlay).collect()
+}
+
 pub fn transform_scene_changes(
     changes: &[ImportSceneChange],
     video_duration: f64,
@@ -385,9 +528,11 @@ pub async fn import_timeline_json(
         .collect();
 
     let scene_segments = transform_scene_changes(&import.scene_changes, video_duration);
+    let overlay_segments = transform_overlays(&import.overlays);
 
     let text_segments_imported = text_segments.len() as u32;
     let scene_segments_created = scene_segments.len() as u32;
+    let overlay_segments_imported = overlay_segments.len() as u32;
 
     let timeline = config
         .timeline
@@ -397,6 +542,7 @@ pub async fn import_timeline_json(
             scene_segments: vec![],
             mask_segments: vec![],
             text_segments: vec![],
+            overlay_segments: vec![],
         });
 
     match mode {
@@ -405,11 +551,17 @@ pub async fn import_timeline_json(
             if !scene_segments.is_empty() {
                 timeline.scene_segments = scene_segments;
             }
+            if !overlay_segments.is_empty() {
+                timeline.overlay_segments = overlay_segments;
+            }
         }
         ImportMergeMode::Append => {
             timeline.text_segments.extend(text_segments);
             if !scene_segments.is_empty() {
                 timeline.scene_segments.extend(scene_segments);
+            }
+            if !overlay_segments.is_empty() {
+                timeline.overlay_segments.extend(overlay_segments);
             }
         }
     }
@@ -423,6 +575,7 @@ pub async fn import_timeline_json(
     info!(
         text_segments_imported,
         scene_segments_created,
+        overlay_segments_imported,
         warnings_count = warnings.len(),
         "Timeline import complete"
     );
@@ -430,6 +583,7 @@ pub async fn import_timeline_json(
     Ok(ImportResult {
         text_segments_imported,
         scene_segments_created,
+        overlay_segments_imported,
         warnings,
     })
 }
@@ -441,15 +595,16 @@ mod tests {
     #[test]
     fn test_version_mismatch_validation() {
         let import = TimelineImport {
-            version: "2.0.0".to_string(),
+            version: "3.0.0".to_string(),
             text_segments: vec![],
             scene_changes: vec![],
+            overlays: vec![],
         };
 
         let result = validate_import(&import);
         assert!(matches!(
             result,
-            Err(TimelineImportError::UnsupportedVersion(v)) if v == "2.0.0"
+            Err(TimelineImportError::UnsupportedVersion(v)) if v == "3.0.0"
         ));
     }
 
@@ -470,6 +625,7 @@ mod tests {
                 keyframes: None,
             }],
             scene_changes: vec![],
+            overlays: vec![],
         };
 
         let result = validate_import(&import);
@@ -500,6 +656,7 @@ mod tests {
                 keyframes: None,
             }],
             scene_changes: vec![],
+            overlays: vec![],
         };
 
         let result = validate_import(&import);
@@ -524,6 +681,7 @@ mod tests {
                     mode: ImportSceneMode::Camera,
                 },
             ],
+            overlays: vec![],
         };
 
         let result = validate_import(&import);
@@ -557,6 +715,7 @@ mod tests {
                 }),
             }],
             scene_changes: vec![],
+            overlays: vec![],
         };
 
         let result = validate_import(&import);
@@ -752,6 +911,7 @@ mod tests {
                 keyframes: None,
             }],
             scene_changes: vec![],
+            overlays: vec![],
         };
 
         let result = validate_import(&import);
@@ -783,6 +943,7 @@ mod tests {
                     mode: ImportSceneMode::Camera,
                 },
             ],
+            overlays: vec![],
         };
 
         let result = validate_import(&import);
@@ -818,10 +979,299 @@ mod tests {
                     mode: ImportSceneMode::Camera,
                 },
             ],
+            overlays: vec![],
         };
 
         let result = validate_import(&import);
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_v2_import_with_overlays() {
+        let import = TimelineImport {
+            version: "2.0.0".to_string(),
+            text_segments: vec![],
+            scene_changes: vec![],
+            overlays: vec![ImportOverlay {
+                start: 10.0,
+                end: 45.0,
+                overlay_type: ImportOverlayType::Split,
+                items: vec![
+                    ImportOverlayItem {
+                        delay: 0.5,
+                        text: "Overview".to_string(),
+                        style: Some(ImportOverlayItemStyle::Title),
+                    },
+                    ImportOverlayItem {
+                        delay: 2.0,
+                        text: "First point".to_string(),
+                        style: Some(ImportOverlayItemStyle::Bullet),
+                    },
+                ],
+            }],
+        };
+
+        let result = validate_import(&import);
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_overlay_invalid_time_range() {
+        let import = TimelineImport {
+            version: "2.0.0".to_string(),
+            text_segments: vec![],
+            scene_changes: vec![],
+            overlays: vec![ImportOverlay {
+                start: 45.0,
+                end: 10.0,
+                overlay_type: ImportOverlayType::Split,
+                items: vec![ImportOverlayItem {
+                    delay: 0.0,
+                    text: "Test".to_string(),
+                    style: None,
+                }],
+            }],
+        };
+
+        let result = validate_import(&import);
+        assert!(matches!(
+            result,
+            Err(TimelineImportError::InvalidOverlayTimeRange {
+                index: 0,
+                start: 45.0,
+                end: 10.0
+            })
+        ));
+    }
+
+    #[test]
+    fn test_overlay_empty_items() {
+        let import = TimelineImport {
+            version: "2.0.0".to_string(),
+            text_segments: vec![],
+            scene_changes: vec![],
+            overlays: vec![ImportOverlay {
+                start: 10.0,
+                end: 45.0,
+                overlay_type: ImportOverlayType::Split,
+                items: vec![],
+            }],
+        };
+
+        let result = validate_import(&import);
+        assert!(matches!(
+            result,
+            Err(TimelineImportError::EmptyOverlayItems { index: 0 })
+        ));
+    }
+
+    #[test]
+    fn test_overlay_empty_item_text() {
+        let import = TimelineImport {
+            version: "2.0.0".to_string(),
+            text_segments: vec![],
+            scene_changes: vec![],
+            overlays: vec![ImportOverlay {
+                start: 10.0,
+                end: 45.0,
+                overlay_type: ImportOverlayType::Split,
+                items: vec![ImportOverlayItem {
+                    delay: 0.0,
+                    text: "   ".to_string(),
+                    style: None,
+                }],
+            }],
+        };
+
+        let result = validate_import(&import);
+        assert!(matches!(
+            result,
+            Err(TimelineImportError::EmptyOverlayItemText {
+                overlay_index: 0,
+                item_index: 0
+            })
+        ));
+    }
+
+    #[test]
+    fn test_overlay_negative_item_delay() {
+        let import = TimelineImport {
+            version: "2.0.0".to_string(),
+            text_segments: vec![],
+            scene_changes: vec![],
+            overlays: vec![ImportOverlay {
+                start: 10.0,
+                end: 45.0,
+                overlay_type: ImportOverlayType::Split,
+                items: vec![ImportOverlayItem {
+                    delay: -1.0,
+                    text: "Test".to_string(),
+                    style: None,
+                }],
+            }],
+        };
+
+        let result = validate_import(&import);
+        assert!(matches!(
+            result,
+            Err(TimelineImportError::NegativeOverlayItemDelay {
+                overlay_index: 0,
+                item_index: 0,
+                delay
+            }) if delay == -1.0
+        ));
+    }
+
+    #[test]
+    fn test_overlay_delay_exceeds_duration_warning() {
+        let import = TimelineImport {
+            version: "2.0.0".to_string(),
+            text_segments: vec![],
+            scene_changes: vec![],
+            overlays: vec![ImportOverlay {
+                start: 10.0,
+                end: 15.0,
+                overlay_type: ImportOverlayType::Split,
+                items: vec![ImportOverlayItem {
+                    delay: 10.0,
+                    text: "Test".to_string(),
+                    style: None,
+                }],
+            }],
+        };
+
+        let result = validate_import(&import);
+        assert!(result.is_ok());
+        let warnings = result.unwrap();
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("exceeds segment duration"));
+    }
+
+    #[test]
+    fn test_overlay_type_transformation() {
+        assert!(matches!(
+            transform_overlay_type(&ImportOverlayType::Split),
+            OverlayType::Split
+        ));
+        assert!(matches!(
+            transform_overlay_type(&ImportOverlayType::Fullscreen),
+            OverlayType::FullScreen
+        ));
+    }
+
+    #[test]
+    fn test_overlay_item_style_transformation() {
+        assert!(matches!(
+            transform_overlay_item_style(&Some(ImportOverlayItemStyle::Title)),
+            OverlayItemStyle::Title
+        ));
+        assert!(matches!(
+            transform_overlay_item_style(&Some(ImportOverlayItemStyle::Bullet)),
+            OverlayItemStyle::Bullet
+        ));
+        assert!(matches!(
+            transform_overlay_item_style(&Some(ImportOverlayItemStyle::Numbered)),
+            OverlayItemStyle::Numbered
+        ));
+        assert!(matches!(
+            transform_overlay_item_style(&None),
+            OverlayItemStyle::Title
+        ));
+    }
+
+    #[test]
+    fn test_overlay_transformation() {
+        let import_overlay = ImportOverlay {
+            start: 10.0,
+            end: 45.0,
+            overlay_type: ImportOverlayType::Split,
+            items: vec![
+                ImportOverlayItem {
+                    delay: 0.5,
+                    text: "Overview".to_string(),
+                    style: Some(ImportOverlayItemStyle::Title),
+                },
+                ImportOverlayItem {
+                    delay: 2.0,
+                    text: "First point".to_string(),
+                    style: Some(ImportOverlayItemStyle::Bullet),
+                },
+            ],
+        };
+
+        let result = transform_overlay(&import_overlay);
+
+        assert_eq!(result.start, 10.0);
+        assert_eq!(result.end, 45.0);
+        assert!(matches!(result.overlay_type, OverlayType::Split));
+        assert_eq!(result.items.len(), 2);
+        assert_eq!(result.items[0].delay, 0.5);
+        assert_eq!(result.items[0].content, "Overview");
+        assert!(matches!(result.items[0].style, OverlayItemStyle::Title));
+        assert_eq!(result.items[1].delay, 2.0);
+        assert_eq!(result.items[1].content, "First point");
+        assert!(matches!(result.items[1].style, OverlayItemStyle::Bullet));
+    }
+
+    #[test]
+    fn test_overlays_transformation() {
+        let overlays = vec![
+            ImportOverlay {
+                start: 10.0,
+                end: 45.0,
+                overlay_type: ImportOverlayType::Split,
+                items: vec![ImportOverlayItem {
+                    delay: 0.0,
+                    text: "First".to_string(),
+                    style: None,
+                }],
+            },
+            ImportOverlay {
+                start: 45.0,
+                end: 48.0,
+                overlay_type: ImportOverlayType::Fullscreen,
+                items: vec![ImportOverlayItem {
+                    delay: 0.0,
+                    text: "Step 2".to_string(),
+                    style: Some(ImportOverlayItemStyle::Title),
+                }],
+            },
+        ];
+
+        let result = transform_overlays(&overlays);
+
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].start, 10.0);
+        assert_eq!(result[0].end, 45.0);
+        assert!(matches!(result[0].overlay_type, OverlayType::Split));
+        assert_eq!(result[1].start, 45.0);
+        assert_eq!(result[1].end, 48.0);
+        assert!(matches!(result[1].overlay_type, OverlayType::FullScreen));
+    }
+
+    #[test]
+    fn test_v1_backwards_compatibility() {
+        let import = TimelineImport {
+            version: "1.0.0".to_string(),
+            text_segments: vec![ImportTextSegment {
+                start: 0.0,
+                end: 5.0,
+                content: "Test".to_string(),
+                center: None,
+                font_size: None,
+                font_family: None,
+                font_weight: None,
+                font_color: None,
+                fade_duration: None,
+                keyframes: None,
+            }],
+            scene_changes: vec![],
+            overlays: vec![],
+        };
+
+        let result = validate_import(&import);
+        assert!(result.is_ok());
     }
 }

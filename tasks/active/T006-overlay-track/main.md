@@ -4,7 +4,7 @@
 - **Task Name:** Overlay Track System
 - **Priority:** 1
 - **Number of Stories:** 6
-- **Current Status:** EXECUTING_S05
+- **Current Status:** S05_COMPLETE
 - **Dependencies:** T005 (split-screen + text keyframes - COMPLETE)
 - **Rules Required:** CLAUDE.md
 
@@ -65,7 +65,7 @@ See [editing-philosophy.md](../T005-split-screen-text-overlays/editing-philosoph
 | S02 | Overlay → Scene+Text generation | Planned | 1-2 days |
 | S03 | Split overlay enter/exit animations | Planned | 1-2 days |
 | S04 | OverlayTrack.tsx UI component | Planned | 2-3 days |
-| S05 | Overlay JSON import | Planned | 1 day |
+| S05 | Overlay JSON import | Complete | 1 day |
 | S06 | Item timing editor UI | Planned | 1-2 days |
 
 **Total estimate:** 7-11 days
@@ -250,10 +250,10 @@ Overlay Track:
 - Convert to OverlaySegment types
 
 **Acceptance Criteria:**
-- [ ] v2.0.0 imports create overlay segments
-- [ ] v1.0.0 still works (backwards compatible)
-- [ ] Validation errors are clear
-- [ ] Success toast shows overlay count
+- [x] v2.0.0 imports create overlay segments
+- [x] v1.0.0 still works (backwards compatible)
+- [x] Validation errors are clear
+- [x] Success toast shows overlay count (via ImportResult.overlay_segments_imported)
 
 ---
 
