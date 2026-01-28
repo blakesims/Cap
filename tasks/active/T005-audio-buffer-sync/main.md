@@ -1,7 +1,7 @@
 # T005: Audio Buffer Sync After Segment Deletion
 
 ## Meta
-- **Status:** CODE_REVIEW
+- **Status:** COMPLETE
 - **Created:** 2026-01-28
 - **Last Updated:** 2026-01-28
 - **Blocked Reason:** —
@@ -167,9 +167,24 @@ Caching must happen at the **clip level** (decoded audio per recording clip), no
 
 > Details: `code-review-phase-1.md`
 
+### Phase 2: Incremental Timeline Rebuild with Crossfade — PASS
+- **Reviewed:** 2026-01-28
+- **Commit:** `9d827e3be`
+- **Verdict:** PASS — all 5 acceptance criteria met
+- **Issues (3 total, 0 blocking):**
+  - LOW: `crossfade_samples_for_rate()` naming slightly misleading (multiplies by channels) — code is correct
+  - LOW: Non-f32 conversion path allocates Vec per sample — rare in practice (most devices use f32)
+  - EXPECTED: Crossfade skipped if mutex contended — intentional to avoid blocking audio thread
+- **Phase 1 concern resolved:** Verified clip index mapping is consistent between `populate_clip_cache()` and `from_clip_cache()`
+
+> Details: `code-review-phase-2.md`
+
 ---
 
 ## Completion
-- **Completed:** —
-- **Summary:** —
-- **Learnings:** —
+- **Completed:** 2026-01-28
+- **Summary:** Implemented clip-level audio caching with O(memcpy) timeline rebuilds and 15ms crossfade on buffer swap. Audio playback now survives segment deletion without re-decode delays or audible artifacts.
+- **Learnings:**
+  - Caching at the clip level (not timeline segment level) is critical — clips are stable across edits, segments change constantly
+  - 15ms crossfade is sufficient to prevent clicks; `try_lock()` in audio callback ensures real-time safety
+  - Fallback to full decode provides graceful degradation on cache miss
