@@ -1,6 +1,6 @@
 import { Button } from "@cap/ui-solid";
 import type { UnlistenFn } from "@tauri-apps/api/event";
-import { ask } from "@tauri-apps/plugin-dialog";
+import { ask, open as dialogOpen } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { type as ostype } from "@tauri-apps/plugin-os";
 import { cx } from "cva";
@@ -12,12 +12,15 @@ import {
 	onMount,
 	Show,
 } from "solid-js";
+import { reconcile } from "solid-js/store";
+import toast from "solid-toast";
 import Tooltip from "~/components/Tooltip";
 import CaptionControlsWindows11 from "~/components/titlebar/controls/CaptionControlsWindows11";
 import { trackEvent } from "~/utils/analytics";
 import { commands } from "~/utils/tauri";
 import { initializeTitlebar } from "~/utils/titlebar-state";
-import { useEditorContext } from "./context";
+import IconLucideImport from "~icons/lucide/import";
+import { normalizeProject, useEditorContext } from "./context";
 import PresetsDropdown from "./PresetsDropdown";
 import ShareButton from "./ShareButton";
 import { EditorButton } from "./ui";
@@ -44,6 +47,7 @@ export interface ExportEstimates {
 export function Header() {
 	const {
 		editorInstance,
+		refetchEditorInstance,
 		projectHistory,
 		setDialog,
 		meta,
@@ -52,6 +56,7 @@ export function Header() {
 		customDomain,
 		editorState,
 		setEditorState,
+		setProject,
 	} = useEditorContext();
 
 	let unlistenTitlebar: UnlistenFn | undefined;
@@ -64,6 +69,45 @@ export function Header() {
 		if (!editorState.timeline.selection) return false;
 		setEditorState("timeline", "selection", null);
 		return true;
+	};
+
+	const handleImportTimeline = async () => {
+		clearTimelineSelection();
+
+		const path = await dialogOpen({
+			filters: [{ name: "Timeline JSON", extensions: ["json"] }],
+			multiple: false,
+		});
+
+		if (!path) return;
+
+		try {
+			const result = await commands.importTimelineJson(
+				path as string,
+				"replace",
+			);
+
+			const instance = await refetchEditorInstance();
+			if (!instance) {
+				toast.error("Failed to refresh editor state");
+				return;
+			}
+			setProject(reconcile(normalizeProject(instance.savedProjectConfig)));
+
+			let message = `Imported ${result.textSegmentsImported} text segment(s)`;
+			if (result.sceneSegmentsCreated > 0) {
+				message += ` and ${result.sceneSegmentsCreated} scene change(s)`;
+			}
+			toast.success(message);
+
+			for (const warning of result.warnings) {
+				toast(warning, { icon: "\u26A0\uFE0F" });
+			}
+		} catch (e) {
+			toast.error(
+				`Import failed: ${e instanceof Error ? e.message : String(e)}`,
+			);
+		}
 	};
 
 	return (
@@ -97,6 +141,11 @@ export function Header() {
 					}}
 					tooltipText="Open recording bundle"
 					leftIcon={<IconLucideFolder class="w-5" />}
+				/>
+				<EditorButton
+					onClick={handleImportTimeline}
+					tooltipText="Import timeline from JSON"
+					leftIcon={<IconLucideImport class="w-5" />}
 				/>
 
 				<div class="flex flex-row items-center">

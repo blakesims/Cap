@@ -29,6 +29,7 @@ mod recovery;
 mod screenshot_editor;
 mod target_select_overlay;
 mod thumbnails;
+mod timeline_import;
 mod tray;
 mod update_project_names;
 mod upload;
@@ -1644,11 +1645,21 @@ async fn set_playhead_position(
 
 #[tauri::command]
 #[specta::specta]
-#[instrument(skip(editor_instance))]
+#[instrument(skip(editor_instance, config))]
 async fn set_project_config(
     editor_instance: WindowEditorInstance,
     config: ProjectConfiguration,
 ) -> Result<(), String> {
+    let segment_count = config
+        .timeline
+        .as_ref()
+        .map(|t| t.segments.len())
+        .unwrap_or(0);
+    tracing::info!(
+        segment_count,
+        "set_project_config called, sending to watch channel"
+    );
+
     config.write(&editor_instance.project_path).unwrap();
 
     editor_instance.project_config.0.send(config).ok();
@@ -2626,6 +2637,7 @@ pub async fn run(recording_logging_handle: LoggingHandle, logs_dir: PathBuf) {
             export::generate_export_preview_fast,
             import::start_video_import,
             import::check_import_ready,
+            timeline_import::import_timeline_json,
             copy_file_to_path,
             copy_video_to_clipboard,
             copy_screenshot_to_clipboard,

@@ -10,9 +10,10 @@ Tracks all non-archived work (PLANNING, ACTIVE, PAUSED, ONGOING). Completed item
 | T002 | CLI Export Queue System | 3 | 0/5 | PLANNING | apps/cli/, crates/export/ | CLAUDE.md | [main.md](./planning/T002-cli-export-queue/main.md) |
 | T003 | Segment Deletion UX Improvements | 2 | 3/3 | COMPLETED | context.ts, Player.tsx, ClipTrack.tsx, ConfigSidebar.tsx | CLAUDE.md | [main.md](./completed/T003-segment-deletion-ux/main.md) |
 | T004 | Editor Playback Improvements | 2 | 2/2 | COMPLETED | crates/editor/, apps/desktop/src/routes/editor/ | CLAUDE.md | [main.md](./completed/T004-editor-playback-improvements/main.md) |
-| T005 | Split-Screen with Animated Text Overlays | 2 | 2/5 | ACTIVE | crates/rendering/, crates/project/, apps/desktop/src/routes/editor/ | CLAUDE.md | [main.md](./active/T005-split-screen-text-overlays/main.md) |
+| T005 | Split-Screen with Animated Text Overlays | 2 | 5/5 | COMPLETE | crates/rendering/, crates/project/, apps/desktop/src/routes/editor/ | CLAUDE.md | [main.md](./active/T005-split-screen-text-overlays/main.md) |
+| T006 | Overlay Track System | 1 | 0/6 | ACTIVE | T005, crates/rendering/, apps/desktop/src/routes/editor/ | CLAUDE.md | [main.md](./active/T006-overlay-track/main.md) |
 
-Next available task id: T006
+Next available task id: T007
 (When a new task is created, increment this in the same change.)
 Important: When creating tasks they be given a directory and continuously updated.
 Eg. create the task in `./tasks/planning/` and move to `./tasks/active/` when started working on it.

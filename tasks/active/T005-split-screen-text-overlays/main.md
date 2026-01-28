@@ -13,9 +13,9 @@
   - [x] PiP disabled when in split-screen mode
   - [x] Animated transitions between all layout modes (300ms, matching existing)
   - [x] Text segments support keyframe animation (position, opacity)
-  - [ ] Bullet points can appear with staggered timing
-  - [ ] JSON import allows LLM-generated timelines to be loaded
-  - [ ] Text easily editable after import
+  - [x] Bullet points can appear with staggered timing (via multiple TextSegments)
+  - [x] JSON import allows LLM-generated timelines to be loaded
+  - [x] Text easily editable after import (via existing text track UI)
 
 ## 1. Goal / Objective
 
@@ -23,7 +23,7 @@ Enable a "codified editing style" where recordings can use split-screen layouts 
 
 ## 2. Overall Status
 
-**ACTIVE** - S01 complete, S02 complete. Ready for S03 (staggered bullet points).
+**COMPLETE** - All 5 stories implemented (S01-S05).
 
 ### Session Log (2026-01-27)
 
@@ -46,11 +46,11 @@ Enable a "codified editing style" where recordings can use split-screen layouts 
 | :--- | :--- | :--- | :--- | :--- |
 | S01 | Add Split-Screen Layout Modes | **DONE** | Camera + styled background (no display) + crop | 1-2 days |
 | S02 | Text Keyframe Animation System | **DONE** | TypeScript + Rust types, interpolation, tests | 1-2 days |
-| S03 | Staggered Bullet Point Rendering | Planned | Multi-text segments with timed appearance | 0.5 day |
-| S04 | JSON Timeline Import | Planned | Import command with validation | 2-3 days |
-| S05 | Editor UI Polish | Planned | UI for new modes + keyframe editing | 1-4 days |
+| S03 | Staggered Bullet Point Rendering | **DONE** | [LLM Timeline Contract](./llm-timeline-contract.md) | 0.5 day |
+| S04 | JSON Timeline Import | **DONE** | `timeline_import.rs` + Tauri command | 2-3 days |
+| S05 | Editor UI Polish | **DONE** | Import button in Header.tsx | 1-4 days |
 
-**Completed: 2/5 stories (S01, S02 done)**
+**Completed: 5/5 stories (S01, S02, S03, S04, S05 done)**
 
 ---
 
@@ -440,45 +440,56 @@ cargo clippy -p cap-rendering -- -D warnings
 
 ## 7. Remaining Stories (Planned)
 
-### S03 - Staggered Bullet Point Rendering
+### S03 - Staggered Bullet Point Rendering ✓ COMPLETE
 **Complexity:** Low (documentation only)
 
-No code changes needed. Text segments + keyframes already support this pattern:
-```json
-{
-  "textSegments": [
-    { "start": 1.0, "end": 10.0, "content": "Point 1", "keyframes": { "opacity": [{"time": 0, "value": 0}, {"time": 0.5, "value": 1}] }},
-    { "start": 2.0, "end": 10.0, "content": "Point 2", "keyframes": { "opacity": [{"time": 0, "value": 0}, {"time": 0.5, "value": 1}] }},
-    { "start": 3.0, "end": 10.0, "content": "Point 3", "keyframes": { "opacity": [{"time": 0, "value": 0}, {"time": 0.5, "value": 1}] }}
-  ]
-}
-```
-**Deliverable:** Example JSON + documentation for LLM prompt engineering.
+**Status:** DONE
 
-### S04 - JSON Timeline Import
+No code changes needed. Text segments + keyframes already support this pattern.
+
+**Deliverable:** [LLM Timeline Contract](./llm-timeline-contract.md)
+- JSON schema definition for external LLM systems
+- Field specifications with ranges and defaults
+- Common patterns (staggered bullets, sliding text, split-screen with text)
+- Validation rules and error handling
+- Merge behavior documentation
+- Tips for LLM generation
+
+### S04 - JSON Timeline Import ✓ COMPLETE
 **Complexity:** Medium
 
-**Requirements to define:**
-1. JSON format LLM will produce (subset of ProjectConfiguration)
-2. Merge vs replace behavior for existing segments
-3. Validation rules (time ranges, required fields)
-4. Error handling UX
+**Status:** DONE
 
 **Implementation:**
-- Tauri command: `import_timeline_json(path: String, mode: MergeMode)`
-- Reuse existing `ProjectConfiguration` serde - just deserialize and merge
-- Add `#[serde(default = "fn")]` for any new fields (learned from S01)
+- New module: `apps/desktop/src-tauri/src/timeline_import.rs`
+- Tauri command: `import_timeline_json(path, mode)` with `Replace` or `Append` modes
+- Comprehensive validation:
+  - Version check (must be "1.0.0")
+  - Time range validation (end > start)
+  - Empty content check
+  - Negative keyframe time check
+  - Sorted scene changes check
+  - Duplicate scene time check
+- Out-of-range values clamped with warnings
+- 14 unit tests covering all validation paths
+- Creates timeline if none exists (critical fix from code review)
 
-### S05 - Editor UI Polish
-**Complexity:** Variable (scope TBD)
+### S05 - Editor UI Polish ✓ COMPLETE
+**Complexity:** Low (minimal scope)
 
-**Potential features:**
-- [ ] Import button in editor toolbar
-- [ ] Camera crop sliders in settings (cropTop/cropBottom now exist)
-- [ ] Split-screen background color picker
-- [ ] Text segment visual editor
+**Status:** DONE
 
-**Recommendation:** Start minimal - just add import button. Other UI can follow.
+**Implementation:**
+- Added "Import Timeline" button to `apps/desktop/src/routes/editor/Header.tsx`
+- Opens file picker filtered for JSON files
+- Calls `import_timeline_json` Tauri command
+- Refreshes editor state after import
+- Shows success/warning/error toasts
+
+**Deferred (out of scope):**
+- Camera crop sliders in settings
+- Split-screen background color picker
+- Text segment visual editor
 
 ---
 
@@ -552,7 +563,9 @@ No code changes needed. Text segments + keyframes already support this pattern:
 ~~5. **Code review** of S02 implementation~~ ✓ DONE
 ~~6. **Update this document** with completion status~~ ✓ DONE
 
-**Remaining:**
-1. **Manual testing** of text keyframes via project-config.json
-2. **Begin S03** - Staggered Bullet Point Rendering (documentation/pattern)
-3. **Begin S04** - JSON Timeline Import (Tauri command)
+**All Stories Complete!**
+
+**Before merging:**
+1. Run `pnpm run dev:desktop` to regenerate TypeScript bindings
+2. Follow [QA Testing Guide](./qa-testing-guide.md) for manual testing
+3. Complete smoke test checklist
