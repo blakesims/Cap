@@ -3557,7 +3557,12 @@ function SceneSegmentConfig(props: {
 							"sceneSegments",
 							props.segmentIndex,
 							"mode",
-							v as "default" | "cameraOnly" | "hideCamera" | "splitScreenLeft" | "splitScreenRight",
+							v as
+								| "default"
+								| "cameraOnly"
+								| "hideCamera"
+								| "splitScreenLeft"
+								| "splitScreenRight",
 						);
 					}}
 				>
