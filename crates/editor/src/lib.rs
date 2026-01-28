@@ -4,6 +4,6 @@ mod editor_instance;
 mod playback;
 mod segments;
 
-pub use audio::AudioRenderer;
+pub use audio::{AudioRenderer, ClipAudioCache};
 pub use editor_instance::{EditorInstance, EditorState, SegmentMedia, create_segments};
 pub use segments::get_audio_segments;

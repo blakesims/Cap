@@ -1,4 +1,4 @@
-use crate::audio::PredecodedAudio;
+use crate::audio::{ClipAudioCache, PredecodedAudio};
 use crate::editor;
 use crate::playback::{self, PlaybackHandle, PlaybackStartError};
 use arc_swap::ArcSwap;
@@ -92,6 +92,7 @@ pub struct EditorInstance {
     pub export_preview_active: AtomicBool,
     pub export_active: AtomicBool,
     pub audio_predecode_buffer: Arc<ArcSwap<Option<PredecodedAudio>>>,
+    pub clip_audio_cache: Arc<ArcSwap<ClipAudioCache>>,
     audio_decode_cancel: CancellationToken,
     audio_decode_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
@@ -297,6 +298,7 @@ impl EditorInstance {
             export_preview_active: AtomicBool::new(false),
             export_active: AtomicBool::new(false),
             audio_predecode_buffer: Arc::new(ArcSwap::new(Arc::new(None))),
+            clip_audio_cache: Arc::new(ArcSwap::from_pointee(ClipAudioCache::new(0, 2))),
             audio_decode_cancel: CancellationToken::new(),
             audio_decode_task: Mutex::new(None),
         });
@@ -320,6 +322,7 @@ impl EditorInstance {
         let segment_medias = self.segment_medias.clone();
         let project_config = self.project_config.1.borrow().clone();
         let audio_buffer = self.audio_predecode_buffer.clone();
+        let clip_cache_handle = self.clip_audio_cache.clone();
         let cancel_token = self.audio_decode_cancel.clone();
 
         let duration = if let Some(timeline) = &project_config.timeline {
@@ -385,7 +388,30 @@ impl EditorInstance {
                 sample_rate = output_info.sample_rate,
                 channels = output_info.channels,
                 duration_secs = duration,
-                "Beginning audio render for pre-decode"
+                "Beginning clip audio cache population"
+            );
+
+            let cache_start = std::time::Instant::now();
+            let mut cache = ClipAudioCache::new(output_info.sample_rate, output_info.channels);
+            crate::audio::populate_clip_cache(&segments, &project_config, output_info, &mut cache);
+            let cache_elapsed = cache_start.elapsed();
+
+            info!(
+                cache_ms = cache_elapsed.as_millis(),
+                clips_cached = cache.len(),
+                cache_bytes = cache.total_bytes(),
+                "Clip audio cache populated"
+            );
+
+            clip_cache_handle.store(Arc::new(cache));
+
+            if cancel_token.is_cancelled() {
+                return;
+            }
+
+            info!(
+                duration_secs = duration,
+                "Beginning full timeline audio render for pre-decode"
             );
 
             let render_start = std::time::Instant::now();
@@ -479,6 +505,7 @@ impl EditorInstance {
                 start_frame_number,
                 project: self.project_config.0.subscribe(),
                 predecoded_audio: self.audio_predecode_buffer.clone(),
+                clip_audio_cache: self.clip_audio_cache.clone(),
             })
             .start(fps, resolution_base)
             .await

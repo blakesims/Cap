@@ -12,6 +12,7 @@ use ringbuf::{
     HeapRb,
     traits::{Consumer, Observer, Producer},
 };
+use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::info;
 
@@ -41,6 +42,236 @@ pub fn compute_timeline_hash(timeline: &cap_project::TimelineConfiguration) -> u
         quantize(seg.timescale).hash(&mut hasher);
     }
     hasher.finish()
+}
+
+const CLIP_CACHE_MAX_BYTES: usize = 500 * 1024 * 1024;
+const BYTES_PER_F32_SAMPLE: usize = std::mem::size_of::<f32>();
+
+pub struct ClipAudioCache {
+    clips: HashMap<u32, Arc<Vec<f32>>>,
+    access_order: Vec<u32>,
+    total_bytes: usize,
+    pub sample_rate: u32,
+    pub channels: usize,
+}
+
+impl ClipAudioCache {
+    pub fn new(sample_rate: u32, channels: usize) -> Self {
+        Self {
+            clips: HashMap::new(),
+            access_order: Vec::new(),
+            total_bytes: 0,
+            sample_rate,
+            channels,
+        }
+    }
+
+    pub fn get(&mut self, clip_index: u32) -> Option<Arc<Vec<f32>>> {
+        if let Some(samples) = self.clips.get(&clip_index) {
+            self.touch(clip_index);
+            Some(Arc::clone(samples))
+        } else {
+            None
+        }
+    }
+
+    pub fn get_readonly(&self, clip_index: u32) -> Option<Arc<Vec<f32>>> {
+        self.clips.get(&clip_index).map(Arc::clone)
+    }
+
+    pub fn insert(&mut self, clip_index: u32, samples: Vec<f32>) {
+        let entry_bytes = samples.len() * BYTES_PER_F32_SAMPLE;
+
+        if let Some(old) = self.clips.remove(&clip_index) {
+            self.total_bytes -= old.len() * BYTES_PER_F32_SAMPLE;
+            self.access_order.retain(|&k| k != clip_index);
+        }
+
+        while self.total_bytes + entry_bytes > CLIP_CACHE_MAX_BYTES && !self.access_order.is_empty()
+        {
+            let evict_key = self.access_order.remove(0);
+            if let Some(evicted) = self.clips.remove(&evict_key) {
+                self.total_bytes -= evicted.len() * BYTES_PER_F32_SAMPLE;
+            }
+        }
+
+        self.total_bytes += entry_bytes;
+        self.clips.insert(clip_index, Arc::new(samples));
+        self.access_order.push(clip_index);
+    }
+
+    pub fn invalidate(&mut self, clip_index: u32) {
+        if let Some(removed) = self.clips.remove(&clip_index) {
+            self.total_bytes -= removed.len() * BYTES_PER_F32_SAMPLE;
+            self.access_order.retain(|&k| k != clip_index);
+        }
+    }
+
+    pub fn contains(&self, clip_index: u32) -> bool {
+        self.clips.contains_key(&clip_index)
+    }
+
+    pub fn len(&self) -> usize {
+        self.clips.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.clips.is_empty()
+    }
+
+    pub fn total_bytes(&self) -> usize {
+        self.total_bytes
+    }
+
+    fn touch(&mut self, clip_index: u32) {
+        self.access_order.retain(|&k| k != clip_index);
+        self.access_order.push(clip_index);
+    }
+}
+
+pub fn populate_clip_cache(
+    segments: &[AudioSegment],
+    project: &ProjectConfiguration,
+    output_info: AudioInfo,
+    cache: &mut ClipAudioCache,
+) {
+    let output_info = output_info.for_ffmpeg_output();
+    cache.sample_rate = output_info.sample_rate;
+    cache.channels = output_info.channels;
+
+    for (clip_index, segment) in segments.iter().enumerate() {
+        let clip_index = clip_index as u32;
+        if cache.contains(clip_index) {
+            continue;
+        }
+
+        if segment.tracks.is_empty() {
+            cache.insert(clip_index, Vec::new());
+            continue;
+        }
+
+        let clip_segments = vec![segment.clone()];
+        let mut renderer = AudioRenderer::new(clip_segments);
+
+        let max_samples = segment
+            .tracks
+            .iter()
+            .map(|t| t.data().sample_count())
+            .max()
+            .unwrap_or(0);
+
+        let clip_duration_secs = max_samples as f64 / AudioData::SAMPLE_RATE as f64;
+        let total_source_samples = max_samples;
+
+        let clip_config = project
+            .clips
+            .iter()
+            .find(|c| c.index == clip_index)
+            .cloned();
+        let single_clip_project = ProjectConfiguration {
+            timeline: None,
+            clips: clip_config
+                .map(|mut c| {
+                    c.index = 0;
+                    vec![c]
+                })
+                .unwrap_or_default(),
+            ..project.clone()
+        };
+
+        let can_bypass_resampler = AudioData::SAMPLE_RATE == output_info.sample_rate
+            && 2 == output_info.channels
+            && output_info.sample_format == AudioData::SAMPLE_FORMAT;
+
+        let estimated_output_samples =
+            (clip_duration_secs * output_info.sample_rate as f64) as usize * output_info.channels;
+
+        let mut decoded_samples: Vec<f32> = Vec::with_capacity(estimated_output_samples + 10000);
+        let chunk_size = 4096usize;
+
+        renderer.set_playhead(0.0, &single_clip_project);
+
+        let mut rendered_source_samples = 0usize;
+
+        if can_bypass_resampler {
+            while rendered_source_samples < total_source_samples {
+                let frame_opt = renderer.render_frame(chunk_size, &single_clip_project);
+                match frame_opt {
+                    Some(frame) => {
+                        let bytes_per_sample = std::mem::size_of::<f32>();
+                        let frame_samples = frame.samples() * output_info.channels;
+                        let frame_bytes = &frame.data(0)[0..frame_samples * bytes_per_sample];
+                        for chunk in frame_bytes.chunks(bytes_per_sample) {
+                            decoded_samples.push(f32::from_ne_bytes(
+                                chunk.try_into().unwrap_or([0; 4]),
+                            ));
+                        }
+                    }
+                    None => {
+                        let output_chunk_samples = (chunk_size as f64
+                            * output_info.sample_rate as f64
+                            / AudioData::SAMPLE_RATE as f64)
+                            as usize
+                            * output_info.channels;
+                        decoded_samples.extend(std::iter::repeat(0.0f32).take(output_chunk_samples));
+                    }
+                }
+                rendered_source_samples += chunk_size;
+            }
+        } else {
+            let mut resampler = AudioResampler::new(output_info).unwrap();
+            let bytes_per_sample = output_info.sample_size();
+            let output_chunk_samples = (chunk_size as f64 * output_info.sample_rate as f64
+                / AudioData::SAMPLE_RATE as f64) as usize
+                * output_info.channels;
+
+            while rendered_source_samples < total_source_samples {
+                let frame_opt = renderer.render_frame(chunk_size, &single_clip_project);
+                match frame_opt {
+                    Some(frame) => {
+                        let resampled = resampler.queue_and_process_frame(&frame);
+                        for chunk in resampled.chunks(bytes_per_sample) {
+                            let mut buf = [0u8; 4];
+                            buf[..chunk.len().min(4)].copy_from_slice(&chunk[..chunk.len().min(4)]);
+                            decoded_samples.push(f32::from_ne_bytes(buf));
+                        }
+                    }
+                    None => {
+                        if let Some(flushed) = resampler.flush_frame() {
+                            for chunk in flushed.chunks(bytes_per_sample) {
+                                let mut buf = [0u8; 4];
+                                buf[..chunk.len().min(4)]
+                                    .copy_from_slice(&chunk[..chunk.len().min(4)]);
+                                decoded_samples.push(f32::from_ne_bytes(buf));
+                            }
+                        }
+                        decoded_samples.extend(std::iter::repeat(0.0f32).take(output_chunk_samples));
+                    }
+                }
+                rendered_source_samples += chunk_size;
+            }
+
+            while let Some(flushed) = resampler.flush_frame() {
+                if flushed.is_empty() {
+                    break;
+                }
+                for chunk in flushed.chunks(bytes_per_sample) {
+                    let mut buf = [0u8; 4];
+                    buf[..chunk.len().min(4)].copy_from_slice(&chunk[..chunk.len().min(4)]);
+                    decoded_samples.push(f32::from_ne_bytes(buf));
+                }
+            }
+        }
+
+        info!(
+            clip_index = clip_index,
+            samples = decoded_samples.len(),
+            bytes = decoded_samples.len() * BYTES_PER_F32_SAMPLE,
+            "Cached decoded audio for clip"
+        );
+
+        cache.insert(clip_index, decoded_samples);
+    }
 }
 
 pub struct AudioRenderer {

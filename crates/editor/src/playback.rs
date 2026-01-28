@@ -32,7 +32,7 @@ use tracing::{error, info, warn};
 #[cfg(not(target_os = "windows"))]
 use crate::audio::AudioPlaybackBuffer;
 use crate::{
-    audio::{AudioSegment, PredecodedAudio},
+    audio::{AudioSegment, ClipAudioCache, PredecodedAudio},
     editor,
     editor_instance::SegmentMedia,
     segments::get_audio_segments,
@@ -56,6 +56,7 @@ pub struct Playback {
     pub project: watch::Receiver<ProjectConfiguration>,
     pub segment_medias: Arc<Vec<SegmentMedia>>,
     pub predecoded_audio: Arc<ArcSwap<Option<PredecodedAudio>>>,
+    pub clip_audio_cache: Arc<ArcSwap<ClipAudioCache>>,
 }
 
 #[derive(Clone, Copy)]
@@ -380,6 +381,7 @@ impl Playback {
                 playhead_rx: audio_playhead_rx,
                 duration_secs: duration,
                 predecoded_audio: self.predecoded_audio.clone(),
+                clip_audio_cache: self.clip_audio_cache.clone(),
             }
             .spawn();
 
@@ -763,6 +765,8 @@ struct AudioPlayback {
     playhead_rx: watch::Receiver<f64>,
     duration_secs: f64,
     predecoded_audio: Arc<ArcSwap<Option<PredecodedAudio>>>,
+    #[allow(dead_code)]
+    clip_audio_cache: Arc<ArcSwap<ClipAudioCache>>,
 }
 
 impl AudioPlayback {
