@@ -4,7 +4,7 @@
 - **Task Name:** Overlay Track System
 - **Priority:** 1
 - **Number of Stories:** 6
-- **Current Status:** PLANNING
+- **Current Status:** EXECUTING_S05
 - **Dependencies:** T005 (split-screen + text keyframes - COMPLETE)
 - **Rules Required:** CLAUDE.md
 
@@ -61,7 +61,7 @@ See [editing-philosophy.md](../T005-split-screen-text-overlays/editing-philosoph
 
 | Story ID | Story Name | Status | Estimate |
 |----------|------------|--------|----------|
-| S01 | OverlaySegment type + configuration | Planned | 1 day |
+| S01 | OverlaySegment type + configuration | Complete | 1 day |
 | S02 | Overlay → Scene+Text generation | Planned | 1-2 days |
 | S03 | Split overlay enter/exit animations | Planned | 1-2 days |
 | S04 | OverlayTrack.tsx UI component | Planned | 2-3 days |
@@ -111,9 +111,9 @@ pub struct OverlaySegment {
 ```
 
 **Acceptance Criteria:**
-- [ ] Types compile and serialize correctly
-- [ ] Existing projects without overlays still load (`#[serde(default)]`)
-- [ ] TypeScript bindings generated
+- [x] Types compile and serialize correctly
+- [x] Existing projects without overlays still load (`#[serde(default)]`)
+- [ ] TypeScript bindings generated (auto-generated on desktop app load)
 
 ---
 
