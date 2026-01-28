@@ -815,6 +815,44 @@ pub struct SceneSegment {
     pub mode: SceneMode,
 }
 
+#[derive(Type, Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum OverlayType {
+    #[default]
+    Split,
+    FullScreen,
+}
+
+#[derive(Type, Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum OverlayItemStyle {
+    #[default]
+    Title,
+    Bullet,
+    Numbered,
+}
+
+#[derive(Type, Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct OverlayItem {
+    #[serde(default)]
+    pub delay: f64,
+    pub content: String,
+    #[serde(default)]
+    pub style: OverlayItemStyle,
+}
+
+#[derive(Type, Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct OverlaySegment {
+    pub start: f64,
+    pub end: f64,
+    #[serde(default)]
+    pub overlay_type: OverlayType,
+    #[serde(default)]
+    pub items: Vec<OverlayItem>,
+}
+
 #[derive(Type, Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct TimelineConfiguration {
@@ -826,6 +864,8 @@ pub struct TimelineConfiguration {
     pub mask_segments: Vec<MaskSegment>,
     #[serde(default)]
     pub text_segments: Vec<TextSegment>,
+    #[serde(default)]
+    pub overlay_segments: Vec<OverlaySegment>,
 }
 
 impl TimelineConfiguration {
