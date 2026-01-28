@@ -842,6 +842,98 @@ impl<T: FromSampleBytes> PrerenderedAudioBuffer<T> {
         }
     }
 
+    pub fn from_clip_cache(
+        cache: &ClipAudioCache,
+        project: &ProjectConfiguration,
+        output_info: AudioInfo,
+    ) -> Option<Self> {
+        let output_info = output_info.for_ffmpeg_output();
+
+        let timeline = project.timeline.as_ref()?;
+        if timeline.segments.is_empty() {
+            return None;
+        }
+
+        if cache.sample_rate != output_info.sample_rate || cache.channels != output_info.channels {
+            return None;
+        }
+
+        let sample_rate = cache.sample_rate as f64;
+        let channels = cache.channels;
+        let bytes_per_sample = output_info.sample_size();
+
+        let total_duration = timeline.duration();
+        let estimated_samples = (total_duration * sample_rate) as usize * channels;
+        let mut samples: Vec<T> = Vec::with_capacity(estimated_samples + 1024);
+
+        let is_f32_direct = output_info.sample_format == AudioData::SAMPLE_FORMAT
+            && std::mem::size_of::<T>() == std::mem::size_of::<f32>();
+
+        for segment in &timeline.segments {
+            let segment_duration = segment.duration();
+
+            if segment.timescale != 1.0 {
+                let silence_samples = (segment_duration * sample_rate) as usize * channels;
+                samples.extend(std::iter::repeat(T::EQUILIBRIUM).take(silence_samples));
+                continue;
+            }
+
+            let clip_audio = match cache.get_readonly(segment.recording_clip) {
+                Some(audio) => audio,
+                None => return None,
+            };
+
+            let start_sample = (segment.start * sample_rate) as usize * channels;
+            let end_sample = (segment.end * sample_rate) as usize * channels;
+            let end_sample = end_sample.min(clip_audio.len());
+            let start_sample = start_sample.min(end_sample);
+
+            if start_sample >= end_sample {
+                let silence_samples = (segment_duration * sample_rate) as usize * channels;
+                samples.extend(std::iter::repeat(T::EQUILIBRIUM).take(silence_samples));
+                continue;
+            }
+
+            let slice = &clip_audio[start_sample..end_sample];
+
+            if is_f32_direct {
+                let src_bytes = unsafe {
+                    std::slice::from_raw_parts(
+                        slice.as_ptr() as *const T,
+                        slice.len(),
+                    )
+                };
+                samples.extend_from_slice(src_bytes);
+            } else {
+                for &f in slice {
+                    let converted: Vec<u8> = match output_info.sample_format {
+                        ffmpeg::format::Sample::I16(_) => {
+                            let i = (f * 32767.0).clamp(-32768.0, 32767.0) as i16;
+                            i.to_ne_bytes().to_vec()
+                        }
+                        ffmpeg::format::Sample::I32(_) => {
+                            let i =
+                                (f * 2147483647.0).clamp(-2147483648.0, 2147483647.0) as i32;
+                            i.to_ne_bytes().to_vec()
+                        }
+                        ffmpeg::format::Sample::F64(_) => (f as f64).to_ne_bytes().to_vec(),
+                        _ => f.to_ne_bytes().to_vec(),
+                    };
+                    for chunk in converted.chunks(bytes_per_sample) {
+                        samples.push(T::from_bytes(chunk));
+                    }
+                }
+            }
+        }
+
+        Some(Self {
+            samples,
+            read_position: std::sync::atomic::AtomicUsize::new(0),
+            sample_rate: output_info.sample_rate,
+            channels,
+        })
+    }
+
     pub fn new(
         segments: Vec<AudioSegment>,
         project: &ProjectConfiguration,
@@ -968,5 +1060,71 @@ impl<T: FromSampleBytes> PrerenderedAudioBuffer<T> {
 
     pub fn into_samples(self) -> Vec<T> {
         self.samples
+    }
+
+    pub fn snapshot_at_playhead(&self, num_samples: usize) -> Vec<T> {
+        use std::sync::atomic::Ordering;
+        let read_pos = self.read_position.load(Ordering::Acquire);
+        let available = self.samples.len().saturating_sub(read_pos);
+        let to_copy = num_samples.min(available);
+        if to_copy > 0 {
+            self.samples[read_pos..read_pos + to_copy].to_vec()
+        } else {
+            vec![T::EQUILIBRIUM; num_samples]
+        }
+    }
+}
+
+const CROSSFADE_DURATION_MS: f64 = 15.0;
+
+pub struct CrossfadeState<T: FromSampleBytes> {
+    pub old_samples: Vec<T>,
+    pub remaining: usize,
+    pub total: usize,
+}
+
+impl<T: FromSampleBytes + cpal::Sample> CrossfadeState<T>
+where
+    T: cpal::FromSample<f32>,
+    f32: cpal::FromSample<T>,
+{
+    pub fn new(old_samples: Vec<T>) -> Self {
+        let total = old_samples.len();
+        Self {
+            old_samples,
+            remaining: total,
+            total,
+        }
+    }
+
+    pub fn crossfade_samples_for_rate(sample_rate: u32, channels: usize) -> usize {
+        let samples_per_ms = (sample_rate as f64 / 1000.0) * channels as f64;
+        (samples_per_ms * CROSSFADE_DURATION_MS) as usize
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.remaining > 0
+    }
+
+    pub fn apply(&mut self, buffer: &mut [T]) {
+        if !self.is_active() {
+            return;
+        }
+
+        let offset = self.total - self.remaining;
+        let to_blend = buffer.len().min(self.remaining);
+
+        for i in 0..to_blend {
+            let progress = (offset + i) as f32 / self.total as f32;
+            let new_weight = progress;
+            let old_weight = 1.0 - progress;
+
+            let new_val: f32 = buffer[i].to_sample();
+            let old_val: f32 = self.old_samples[offset + i].to_sample();
+            let blended = old_val * old_weight + new_val * new_weight;
+            buffer[i] = T::from_sample(blended);
+        }
+
+        self.remaining -= to_blend;
     }
 }

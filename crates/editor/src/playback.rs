@@ -765,7 +765,6 @@ struct AudioPlayback {
     playhead_rx: watch::Receiver<f64>,
     duration_secs: f64,
     predecoded_audio: Arc<ArcSwap<Option<PredecodedAudio>>>,
-    #[allow(dead_code)]
     clip_audio_cache: Arc<ArcSwap<ClipAudioCache>>,
 }
 
@@ -1160,7 +1159,8 @@ impl AudioPlayback {
         duration_secs: f64,
     ) -> Result<(watch::Receiver<bool>, cpal::Stream), MediaError>
     where
-        T: FromSampleBytes + cpal::Sample + Send + Sync + 'static,
+        T: FromSampleBytes + cpal::Sample + cpal::FromSample<f32> + Send + Sync + 'static,
+        f32: cpal::FromSample<T>,
     {
         use crate::audio::PrerenderedAudioBuffer;
         use std::sync::atomic::{AtomicU64, Ordering};
@@ -1173,6 +1173,7 @@ impl AudioPlayback {
             fps,
             playhead_rx,
             predecoded_audio,
+            clip_audio_cache,
             ..
         } = self;
 
@@ -1294,10 +1295,20 @@ impl AudioPlayback {
 
         initial_buffer.set_playhead(playhead);
 
+        let crossfade_samples = crate::audio::CrossfadeState::<T>::crossfade_samples_for_rate(
+            sample_rate,
+            output_info.channels,
+        );
+
         let shared_buffer: Arc<ArcSwap<PrerenderedAudioBuffer<T>>> =
             Arc::new(ArcSwap::from_pointee(initial_buffer));
         let buffer_for_callback = shared_buffer.clone();
         let buffer_for_rebuilder = shared_buffer;
+
+        let crossfade: Arc<std::sync::Mutex<Option<crate::audio::CrossfadeState<T>>>> =
+            Arc::new(std::sync::Mutex::new(None));
+        let crossfade_for_callback = crossfade.clone();
+        let crossfade_for_rebuilder = crossfade;
 
         let current_playhead = Arc::new(AtomicU64::new(playhead.to_bits()));
         let playhead_for_callback = current_playhead.clone();
@@ -1380,18 +1391,33 @@ impl AudioPlayback {
                                 "Rebuilding audio buffer after timeline change"
                             );
 
-                            let new_buffer = PrerenderedAudioBuffer::<T>::new(
-                                segments_for_rebuild.clone(),
+                            let cache_snapshot = clip_audio_cache.load();
+                            let new_buffer = PrerenderedAudioBuffer::<T>::from_clip_cache(
+                                cache_snapshot.as_ref(),
                                 &new_project,
                                 output_info,
-                                new_duration,
-                            );
+                            )
+                            .unwrap_or_else(|| {
+                                info!("Cache miss in rebuilder, falling back to full decode");
+                                PrerenderedAudioBuffer::<T>::new(
+                                    segments_for_rebuild.clone(),
+                                    &new_project,
+                                    output_info,
+                                    new_duration,
+                                )
+                            });
 
                             let current = f64::from_bits(
                                 playhead_for_rebuilder.load(Ordering::Acquire)
                             );
                             let clamped_playhead = current.min(new_duration);
                             new_buffer.set_playhead(clamped_playhead);
+
+                            let old_buffer = buffer_for_rebuilder.load();
+                            let old_snapshot = old_buffer.snapshot_at_playhead(crossfade_samples);
+                            if let Ok(mut fade) = crossfade_for_rebuilder.lock() {
+                                *fade = Some(crate::audio::CrossfadeState::new(old_snapshot));
+                            }
 
                             buffer_for_rebuilder.store(Arc::new(new_buffer));
 
@@ -1429,6 +1455,15 @@ impl AudioPlayback {
                     }
 
                     audio_buffer.fill(buffer);
+
+                    if let Ok(mut fade) = crossfade_for_callback.try_lock() {
+                        if let Some(ref mut state) = *fade {
+                            state.apply(buffer);
+                            if !state.is_active() {
+                                *fade = None;
+                            }
+                        }
+                    }
                 },
                 |err| eprintln!("Audio stream error: {err}"),
                 None,
