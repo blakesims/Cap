@@ -94,3 +94,25 @@ Fix two editor UX issues: (1) timeline doesn't follow the playhead, requiring ma
 ## 6. Investigation Log
 
 (Use this section to record findings during investigation)
+
+---
+
+## 7. Post-Completion Bug Fix (2026-01-28)
+
+**Critical bug discovered:** After T004, deleting a segment caused audio to go out of sync with video.
+
+**Root cause:** Pre-decoded audio used `segment_count` for cache invalidation, but i/o marker deletion (split+delete) can leave count unchanged while altering content.
+
+**Fix:** Replaced `segment_count` with `timeline_hash` that hashes all segment boundaries with quantized floats.
+
+**Additional optimizations:**
+- Partial pre-decode (first 2 min) for fast initial playback
+- Quick render (60s) after edits for immediate playback without 20s wait
+
+**Status:** Core fix complete, optimizations in testing.
+
+**See:** `audio-sync-bug-fix.md` for full details, investigation process, and learnings.
+
+**New work needed:**
+- Background re-pre-decode after timeline edits
+- Extend quick render if playback approaches buffer end
