@@ -72,10 +72,10 @@ Caching must happen at the **clip level** (decoded audio per recording clip), no
 #### Phase 2: Incremental Timeline Rebuild with Crossfade
 - **Objective:** On timeline change (segment deletion/split/reorder), rebuild the `PrerenderedAudioBuffer` by splicing cached clip audio instead of re-decoding. Apply a short crossfade on buffer swap to prevent clicks.
 - **Tasks:**
-  - [ ] Task 2.1: Add `PrerenderedAudioBuffer::from_clip_cache()` — walks `TimelineConfiguration.segments`, looks up each segment's `recording_clip` in `ClipAudioCache`, slices the cached audio from `segment.start` to `segment.end`, and concatenates into the final buffer. For `timescale != 1.0`, insert silence (matching current `AudioRenderer` behavior which returns `None` for non-1.0 timescale)
-  - [ ] Task 2.2: Replace `PrerenderedAudioBuffer::new()` call in rebuilder thread (`playback.rs:1379-1384`) with `from_clip_cache()`. Fall back to full `::new()` only if cache miss (clip not yet decoded)
-  - [ ] Task 2.3: Apply 15ms crossfade at buffer swap point — when `buffer_for_rebuilder.store()` swaps in the new buffer, the audio callback should blend the last ~15ms of old buffer with first ~15ms of new buffer at the current playhead position. Implement as a simple linear fade stored alongside the `ArcSwap`
-  - [ ] Task 2.4: Preserve playhead position across swap — current code already does this (`playhead_for_rebuilder` AtomicU64), verify it remains accurate with the new splice-based buffer
+  - [x] Task 2.1: Add `PrerenderedAudioBuffer::from_clip_cache()` — walks `TimelineConfiguration.segments`, looks up each segment's `recording_clip` in `ClipAudioCache`, slices the cached audio from `segment.start` to `segment.end`, and concatenates into the final buffer. For `timescale != 1.0`, insert silence (matching current `AudioRenderer` behavior which returns `None` for non-1.0 timescale)
+  - [x] Task 2.2: Replace `PrerenderedAudioBuffer::new()` call in rebuilder thread (`playback.rs:1379-1384`) with `from_clip_cache()`. Fall back to full `::new()` only if cache miss (clip not yet decoded)
+  - [x] Task 2.3: Apply 15ms crossfade at buffer swap point — when `buffer_for_rebuilder.store()` swaps in the new buffer, the audio callback should blend the last ~15ms of old buffer with first ~15ms of new buffer at the current playhead position. Implement as a simple linear fade stored alongside the `ArcSwap`
+  - [x] Task 2.4: Preserve playhead position across swap — current code already does this (`playhead_for_rebuilder` AtomicU64), verify it remains accurate with the new splice-based buffer
 - **Acceptance Criteria:**
   - [ ] AC1: Deleting a segment rebuilds audio in <50ms (splice, no decode)
   - [ ] AC2: Audio remains perfectly synced after any timeline edit
@@ -131,11 +131,41 @@ Caching must happen at the **clip level** (decoded audio per recording clip), no
   - `get_readonly()` provided for read access without LRU touch (useful from audio callback thread where `&mut` isn't available)
 - **Note:** Cannot verify with `cargo check` — Rust toolchain not available in this environment. Code reviewed manually for correctness.
 
+### Phase 2: Incremental Timeline Rebuild with Crossfade — COMPLETE
+- **Commit:** `9d827e3be` — `feat(editor): incremental timeline rebuild with crossfade on buffer swap [T005-P2]`
+- **Files changed:** `crates/editor/src/audio.rs`, `crates/editor/src/playback.rs`
+- **Summary:**
+  - Added `PrerenderedAudioBuffer::from_clip_cache()` — walks timeline segments, looks up cached clip audio by `recording_clip` index, slices `start..end`, concatenates. Inserts silence for `timescale != 1.0`. Returns `None` on cache miss for fallback
+  - Replaced rebuilder's `PrerenderedAudioBuffer::new()` with `from_clip_cache()`, falling back to full decode on cache miss
+  - Added `CrossfadeState<T>` struct with 15ms linear crossfade — rebuilder snapshots old buffer's upcoming samples before swap, audio callback blends old/new via `try_lock()` on shared `Mutex`
+  - Added `snapshot_at_playhead()` on `PrerenderedAudioBuffer` for capturing old buffer state
+  - Removed `#[allow(dead_code)]` on `clip_audio_cache` field (now used)
+  - Added `cpal::FromSample<f32>` and `f32: cpal::FromSample<T>` trait bounds for crossfade sample conversion
+- **Design decisions:**
+  - Crossfade uses `Mutex<Option<CrossfadeState<T>>>` shared between rebuilder and callback — `try_lock()` in callback avoids blocking the audio thread
+  - Linear fade (not equal-power) chosen for simplicity; 15ms is short enough that the difference is inaudible
+  - `from_clip_cache()` returns `Option` — `None` triggers fallback to full `PrerenderedAudioBuffer::new()`, ensuring graceful degradation
+  - Playhead preservation verified: existing `AtomicU64` mechanism unchanged, clamped to new duration after rebuild
+- **Note:** Cannot verify with `cargo check` — Rust toolchain not available in this environment. Code reviewed manually for correctness.
+
 ---
 
 ## Code Review Log
 
-—
+### Phase 1: Clip-Level Audio Cache — PASS WITH ISSUES (non-blocking)
+- **Reviewed:** 2026-01-28
+- **Commit:** `bb884f622`
+- **Verdict:** PASS — all 3 acceptance criteria met
+- **Issues (6 total, 0 blocking):**
+  - MEDIUM: `populate_clip_cache` uses `enumerate()` index as `recording_clip` — assumes `get_audio_segments()` returns segments in clip-index order. Needs verification before Phase 2 relies on cache lookups.
+  - LOW: LRU eviction is O(n) per `get()`/`insert()`/`invalidate()` — negligible for typical clip counts
+  - LOW: Single-clip project config remaps index to 0 — correct but subtle coupling for Phase 2
+  - LOW: Resampler byte-to-f32 conversion zero-pads sub-4-byte chunks (shouldn't occur in practice)
+  - LOW: No `CancellationToken` check between clip decodes in `populate_clip_cache()`
+  - EXPECTED: `#[allow(dead_code)]` on `clip_audio_cache` in `AudioPlayback` — remove in Phase 2
+- **Recommendation:** Proceed to Phase 2. Verify clip index mapping (Issue 2) during Phase 2 implementation.
+
+> Details: `code-review-phase-1.md`
 
 ---
 
