@@ -28,7 +28,7 @@ pub fn generate_scene_segments(overlays: &[OverlaySegment]) -> Vec<SceneSegment>
         .map(|overlay| {
             let mode = match overlay.overlay_type {
                 OverlayType::Split => SceneMode::SplitScreenRight,
-                OverlayType::FullScreen => SceneMode::Default,
+                OverlayType::FullScreen => SceneMode::HideScreen,
             };
 
             SceneSegment {
@@ -40,7 +40,9 @@ pub fn generate_scene_segments(overlays: &[OverlaySegment]) -> Vec<SceneSegment>
         .collect()
 }
 
-pub fn generate_text_segments(overlays: &[OverlaySegment]) -> (Vec<TextSegment>, Vec<OverlayWarning>) {
+pub fn generate_text_segments(
+    overlays: &[OverlaySegment],
+) -> (Vec<TextSegment>, Vec<OverlayWarning>) {
     let mut text_segments = Vec::new();
     let mut warnings = Vec::new();
 
@@ -58,7 +60,10 @@ pub fn generate_text_segments(overlays: &[OverlaySegment]) -> (Vec<TextSegment>,
                 });
             }
 
-            let current_bullet_index = if matches!(item.style, OverlayItemStyle::Bullet | OverlayItemStyle::Numbered) {
+            let current_bullet_index = if matches!(
+                item.style,
+                OverlayItemStyle::Bullet | OverlayItemStyle::Numbered
+            ) {
                 let idx = bullet_index;
                 bullet_index += 1;
                 idx
@@ -74,7 +79,11 @@ pub fn generate_text_segments(overlays: &[OverlaySegment]) -> (Vec<TextSegment>,
     (text_segments, warnings)
 }
 
-fn create_text_segment(overlay: &OverlaySegment, item: &OverlayItem, bullet_index: usize) -> TextSegment {
+fn create_text_segment(
+    overlay: &OverlaySegment,
+    item: &OverlayItem,
+    bullet_index: usize,
+) -> TextSegment {
     let (center, font_size) = get_position_and_size(&item.style, bullet_index);
     let absolute_start = overlay.start + item.delay;
     let content = format_content(&item.content, &item.style, bullet_index);
@@ -115,10 +124,7 @@ fn format_content(content: &str, style: &OverlayItemStyle, item_index: usize) ->
     }
 }
 
-fn create_animation_keyframes(
-    _style: &OverlayItemStyle,
-    center_y: f64,
-) -> TextKeyframes {
+fn create_animation_keyframes(_style: &OverlayItemStyle, center_y: f64) -> TextKeyframes {
     TextKeyframes {
         position: vec![
             TextVectorKeyframe {
@@ -174,11 +180,19 @@ pub fn merge_with_existing(
 ) -> (Vec<SceneSegment>, Vec<TextSegment>) {
     let mut scene_segments = existing_scene_segments.to_vec();
     scene_segments.extend(overlay_scene_segments);
-    scene_segments.sort_by(|a, b| a.start.partial_cmp(&b.start).unwrap_or(std::cmp::Ordering::Equal));
+    scene_segments.sort_by(|a, b| {
+        a.start
+            .partial_cmp(&b.start)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     let mut text_segments = existing_text_segments.to_vec();
     text_segments.extend(overlay_text_segments);
-    text_segments.sort_by(|a, b| a.start.partial_cmp(&b.start).unwrap_or(std::cmp::Ordering::Equal));
+    text_segments.sort_by(|a, b| {
+        a.start
+            .partial_cmp(&b.start)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     (scene_segments, text_segments)
 }
@@ -221,7 +235,7 @@ mod tests {
         let scenes = generate_scene_segments(&overlays);
 
         assert_eq!(scenes.len(), 1);
-        assert!(matches!(scenes[0].mode, SceneMode::Default));
+        assert!(matches!(scenes[0].mode, SceneMode::HideScreen));
     }
 
     #[test]
@@ -345,7 +359,7 @@ mod tests {
         assert!(warnings.is_empty());
 
         assert!(matches!(scenes[0].mode, SceneMode::SplitScreenRight));
-        assert!(matches!(scenes[1].mode, SceneMode::Default));
+        assert!(matches!(scenes[1].mode, SceneMode::HideScreen));
     }
 
     #[test]
@@ -392,8 +406,12 @@ mod tests {
             keyframes: TextKeyframes::default(),
         }];
 
-        let (merged_scenes, merged_texts) =
-            merge_with_existing(&existing_scenes, &existing_texts, overlay_scenes, overlay_texts);
+        let (merged_scenes, merged_texts) = merge_with_existing(
+            &existing_scenes,
+            &existing_texts,
+            overlay_scenes,
+            overlay_texts,
+        );
 
         assert_eq!(merged_scenes.len(), 2);
         assert_eq!(merged_texts.len(), 2);
@@ -442,7 +460,11 @@ mod tests {
                 start: 20.0,
                 end: 25.0,
                 overlay_type: OverlayType::FullScreen,
-                items: vec![make_item(5.0, "Exactly at boundary", OverlayItemStyle::Title)],
+                items: vec![make_item(
+                    5.0,
+                    "Exactly at boundary",
+                    OverlayItemStyle::Title,
+                )],
             },
         ];
 

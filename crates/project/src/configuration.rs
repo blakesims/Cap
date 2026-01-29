@@ -804,6 +804,7 @@ pub enum SceneMode {
     HideCamera,
     SplitScreenLeft,
     SplitScreenRight,
+    HideScreen,
 }
 
 #[derive(Type, Serialize, Deserialize, Clone, Debug)]

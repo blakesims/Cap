@@ -99,6 +99,7 @@ impl InterpolatedScene {
                             | (SceneMode::HideCamera, SceneMode::HideCamera)
                             | (SceneMode::SplitScreenLeft, SceneMode::SplitScreenLeft)
                             | (SceneMode::SplitScreenRight, SceneMode::SplitScreenRight)
+                            | (SceneMode::HideScreen, SceneMode::HideScreen)
                     );
                     if gap < MIN_GAP_FOR_TRANSITION && same_mode {
                         // Small gap between same modes, no transition needed
@@ -117,7 +118,6 @@ impl InterpolatedScene {
                 if let Some(next_seg) = cursor.next_segment() {
                     let gap = next_seg.start - segment.end;
 
-                    // For small gaps between same-mode segments, don't transition
                     let same_mode = matches!(
                         (&segment.mode, &next_seg.mode),
                         (SceneMode::CameraOnly, SceneMode::CameraOnly)
@@ -125,6 +125,7 @@ impl InterpolatedScene {
                             | (SceneMode::HideCamera, SceneMode::HideCamera)
                             | (SceneMode::SplitScreenLeft, SceneMode::SplitScreenLeft)
                             | (SceneMode::SplitScreenRight, SceneMode::SplitScreenRight)
+                            | (SceneMode::HideScreen, SceneMode::HideScreen)
                     );
                     if gap < MIN_GAP_FOR_TRANSITION && same_mode {
                         // Keep the current mode without transitioning
@@ -167,7 +168,6 @@ impl InterpolatedScene {
             if let Some(prev_seg) = cursor.prev_segment {
                 let gap = next_segment.start - prev_seg.end;
 
-                // For small gaps between same-mode segments, stay in that mode
                 let same_mode = matches!(
                     (&prev_seg.mode, &next_segment.mode),
                     (SceneMode::CameraOnly, SceneMode::CameraOnly)
@@ -175,6 +175,7 @@ impl InterpolatedScene {
                         | (SceneMode::HideCamera, SceneMode::HideCamera)
                         | (SceneMode::SplitScreenLeft, SceneMode::SplitScreenLeft)
                         | (SceneMode::SplitScreenRight, SceneMode::SplitScreenRight)
+                        | (SceneMode::HideScreen, SceneMode::HideScreen)
                 );
                 if gap < MIN_GAP_FOR_TRANSITION && same_mode {
                     (prev_seg.mode, prev_seg.mode, 1.0)
@@ -296,6 +297,7 @@ impl InterpolatedScene {
             SceneMode::HideCamera => (0.0, 1.0, 1.0),
             SceneMode::SplitScreenLeft => (1.0, 1.0, 1.0),
             SceneMode::SplitScreenRight => (1.0, 1.0, 1.0),
+            SceneMode::HideScreen => (1.0, 0.0, 1.0),
         }
     }
 
