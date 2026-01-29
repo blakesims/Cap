@@ -3,7 +3,7 @@
 ## Meta
 - **Status:** IN-PROGRESS
 - **Created:** 2026-01-28
-- **Last Updated:** 2026-01-29 (Phase 1 reviewed)
+- **Last Updated:** 2026-01-29 (Phase 3 reviewed)
 - **Blocked Reason:** —
 
 ## Task
@@ -236,22 +236,24 @@ Vertical spacing: First item Y = 0.25, subsequent items Y += 0.12
 - **Status:** ✅ COMPLETE
 - **Started:** 2026-01-29
 - **Completed:** 2026-01-29
-- **Commits:** —
+- **Commits:** `ebd874388`
 - **Files Modified:**
-  - `apps/desktop/src/routes/editor/Timeline/OverlayTrack.tsx` (new, ~400 lines) — Main component
-  - `apps/desktop/src/routes/editor/Timeline/index.tsx` (+30 lines) — Track integration
-  - `apps/desktop/src/routes/editor/context.ts` (+60 lines) — Selection type, track state, projectActions
+  - `apps/desktop/src/routes/editor/Timeline/OverlayTrack.tsx` (new, +488 lines) — Main component
+  - `apps/desktop/src/routes/editor/Timeline/index.tsx` (+38 lines) — Track integration
+  - `apps/desktop/src/routes/editor/context.ts` (+82 lines) — Selection type, track state, projectActions
 - **Notes:**
-  - Created OverlayTrack.tsx following TextTrack patterns
+  - Created OverlayTrack.tsx following TextTrack patterns exactly
   - Colored segments: Split=orange gradient, FullScreen=teal gradient
-  - Drag-to-move and resize handles implemented
+  - Drag-to-move with neighbor collision bounds
+  - Resize handles with min duration constraints (1s or 80px)
   - Multi-select with Ctrl/Cmd+click, range select with Shift+click
-  - Double-click handler for future item editor (Phase 4)
+  - Double-click handler wired for Phase 4 item editor
   - Added `overlay` to TimelineSelectionType and TimelineTrackType
   - Added overlay track toggle in TrackManager
   - Added projectActions: splitOverlaySegment, deleteOverlaySegments
   - Updated rippleAdjustOverlays and deleteInOutRegion for overlay support
   - TypeScript types defined locally (not in tauri.ts auto-generated)
+  - Click empty track area adds new overlay at playhead position
 
 ### Phase 4: Item Timing Editor UI
 - **Status:** —
@@ -272,11 +274,15 @@ Vertical spacing: First item Y = 0.25, subsequent items Y += 0.12
 → Details: `code-review-phase-1.md`
 
 ### Phase 2
-- **Gate:** —
+- **Gate:** N/A (no code changes)
+- **Reviewed:** 2026-01-29
+- **Summary:** Existing scene.rs transition code already implements all required enter/exit animations. Phase verified by code inspection — no new code needed.
 → Details: `code-review-phase-2.md`
 
 ### Phase 3
-- **Gate:** —
+- **Gate:** ✅ PASS
+- **Reviewed:** 2026-01-29
+- **Summary:** High-quality implementation following TextTrack patterns exactly. Complete feature set (drag, resize, select, split). Clean visual distinction between overlay types. All acceptance criteria met.
 → Details: `code-review-phase-3.md`
 
 ### Phase 4
