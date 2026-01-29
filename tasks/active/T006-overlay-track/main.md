@@ -1,9 +1,9 @@
 # T006: Overlay Track System
 
 ## Meta
-- **Status:** IN-PROGRESS
+- **Status:** ✅ COMPLETE
 - **Created:** 2026-01-28
-- **Last Updated:** 2026-01-29 (Phase 4 complete, pending review)
+- **Last Updated:** 2026-01-29 (all phases complete)
 - **Blocked Reason:** —
 
 ## Task
@@ -259,19 +259,20 @@ Vertical spacing: First item Y = 0.25, subsequent items Y += 0.12
 - **Status:** ✅ COMPLETE
 - **Started:** 2026-01-29
 - **Completed:** 2026-01-29
-- **Commits:** —
+- **Commits:** `38327f794`
 - **Files Modified:**
-  - `apps/desktop/src/routes/editor/OverlayEditor.tsx` (new, +362 lines) — Modal component for editing overlays
-  - `apps/desktop/src/routes/editor/Timeline/index.tsx` (+16 lines) — Editor state and double-click integration
+  - `apps/desktop/src/routes/editor/OverlayEditor.tsx` (new, +350 lines) — Modal component for editing overlays
+  - `apps/desktop/src/routes/editor/Timeline/index.tsx` (+21 lines) — Editor state and double-click integration
 - **Notes:**
   - Created OverlayEditor.tsx with Kobalte Dialog + Select components
   - Overlay type dropdown (Split/FullScreen) with descriptions
   - Editable item list with reorder (up/down buttons), add, and delete
-  - Per-item: content text input, delay number input, style dropdown (Title/Bullet/Numbered)
-  - Warning shown when item delay exceeds segment duration
+  - Per-item: content text input, delay number input (0.1s step), style dropdown (Title/Bullet/Numbered)
+  - Warning shown when item delay exceeds segment duration (amber alert)
   - Local state editing with save/cancel — changes only persist on "Save Changes"
-  - Double-click on overlay segment in OverlayTrack opens editor
-  - Uses existing Dialog, Input components from ui.tsx for consistency
+  - Double-click on overlay segment in OverlayTrack opens editor via `onDoubleClick` prop
+  - Uses existing Dialog, Input, Button components from ui-solid for consistency
+  - Proper type imports from OverlayTrack for TypeScript safety
 
 ---
 
@@ -296,12 +297,18 @@ Vertical spacing: First item Y = 0.25, subsequent items Y += 0.12
 → Details: `code-review-phase-3.md`
 
 ### Phase 4
-- **Gate:** ⏳ PENDING REVIEW
+- **Gate:** ✅ PASS
+- **Reviewed:** 2026-01-29
+- **Summary:** Clean implementation following established patterns. Uses Kobalte Dialog/Select with existing ui-solid components. Local state editing pattern prevents accidental saves. All 6 acceptance criteria met. Proper validation with amber warning for delay exceeding duration.
 → Details: `code-review-phase-4.md`
 
 ---
 
 ## Completion
-- **Completed:** —
-- **Summary:** —
-- **Learnings:** —
+- **Completed:** 2026-01-29
+- **Summary:** Implemented complete Overlay Track system across 4 phases. Phase 1 added overlay→scene+text generation in Rust (464 lines). Phase 2 confirmed existing animations suffice. Phase 3 built OverlayTrack.tsx UI (488 lines) with drag/resize/select. Phase 4 added OverlayEditor.tsx modal (350 lines) for item editing. All acceptance criteria met.
+- **Learnings:**
+  - Existing scene.rs animations were comprehensive enough to require no changes (Phase 2)
+  - Local state editing pattern in modals prevents accidental saves
+  - TypeScript types for overlays kept local to avoid tauri.ts conflicts
+  - Split ratio ended up 60/40 (SplitScreenRight) not 50/50 — acceptable trade-off
