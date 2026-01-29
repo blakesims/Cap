@@ -32,6 +32,7 @@ mod frame_pipeline;
 pub mod iosurface_texture;
 mod layers;
 mod mask;
+mod overlay;
 mod project_recordings;
 mod scene;
 pub mod spring_mass_damper;
@@ -46,6 +47,7 @@ pub use frame_pipeline::RenderedFrame;
 pub use project_recordings::{ProjectRecordingsMeta, SegmentRecordings, Video};
 
 use mask::interpolate_masks;
+pub use overlay::{generate_scene_segments, generate_text_segments, merge_with_existing, validate_overlay_items, OverlayWarning};
 use scene::*;
 use text::{PreparedText, prepare_texts};
 use zoom::*;
@@ -1354,11 +1356,23 @@ impl ProjectUniforms {
             .map(|t| t.zoom_segments.as_slice())
             .unwrap_or(&[]);
 
-        let scene_segments = project
+        let (resolved_scene_segments, resolved_text_segments) = project
             .timeline
             .as_ref()
-            .map(|t| t.scene_segments.as_slice())
-            .unwrap_or(&[]);
+            .map(|timeline| {
+                let overlay_scenes = overlay::generate_scene_segments(&timeline.overlay_segments);
+                let (overlay_texts, _warnings) =
+                    overlay::generate_text_segments(&timeline.overlay_segments);
+                overlay::merge_with_existing(
+                    &timeline.scene_segments,
+                    &timeline.text_segments,
+                    overlay_scenes,
+                    overlay_texts,
+                )
+            })
+            .unwrap_or_default();
+
+        let scene_segments = resolved_scene_segments.as_slice();
 
         let zoom_focus = zoom_focus_interpolator.interpolate(current_recording_time);
 
@@ -1838,18 +1852,12 @@ impl ProjectUniforms {
             })
             .unwrap_or_default();
 
-        let texts = project
-            .timeline
-            .as_ref()
-            .map(|timeline| {
-                prepare_texts(
-                    XY::new(output_size.0, output_size.1),
-                    frame_time as f64,
-                    &timeline.text_segments,
-                    &project.hidden_text_segments,
-                )
-            })
-            .unwrap_or_default();
+        let texts = prepare_texts(
+            XY::new(output_size.0, output_size.1),
+            frame_time as f64,
+            &resolved_text_segments,
+            &project.hidden_text_segments,
+        );
 
         Self {
             output_size,
