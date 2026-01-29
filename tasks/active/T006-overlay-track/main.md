@@ -1,93 +1,119 @@
-# Task: T006 - Overlay Track System
+# T006: Overlay Track System
 
-## 0. Task Summary
-- **Task Name:** Overlay Track System
-- **Priority:** 1
-- **Number of Stories:** 6
-- **Current Status:** S05_COMPLETE
-- **Dependencies:** T005 (split-screen + text keyframes - COMPLETE)
-- **Rules Required:** CLAUDE.md
+## Meta
+- **Status:** IN-PROGRESS
+- **Created:** 2026-01-28
+- **Last Updated:** 2026-01-29 (Phase 1 reviewed)
+- **Blocked Reason:** —
 
-## 1. Goal / Objective
+## Task
 
 Create a unified **Overlay Track** that couples text overlays with scene layouts. This enforces the constraint that split-screen and text always go together, making editing simpler and less error-prone.
 
-### Design Philosophy
-See [editing-philosophy.md](../T005-split-screen-text-overlays/editing-philosophy.md) for the full context.
+**Design Philosophy:** Text overlay ↔ Layout change are coupled. Never independent.
 
-**Core principle:** Text overlay ↔ Layout change are coupled. Never independent.
+**Overlay Types:**
 
-## 2. Overlay Types
+1. **Split (50/50):** Camera right 50% (cropped/centered) + Background+Text left 50%
+2. **FullScreen:** PiP camera in corner + Full-width text area (bullets, numbered, or centered title)
 
-### Type 1: Split (50/50)
-```
-┌────────────────────────────┬────────────────────────────┐
-│                            │                            │
-│   BACKGROUND + TEXT        │   CAMERA (cropped/centered)│
-│   • Bullet point           │   (uses crop settings)     │
-│   • Another point          │                            │
-│                            │                            │
-└────────────────────────────┴────────────────────────────┘
-```
-
-- **Camera:** Right 50%, uses existing crop settings to frame subject
-- **Text:** Left 50%, bullet points or numbered list
-- **Background:** Cap's existing background system
-- **Enter animation:** Camera slides right + text slides in from left (ease-in-out)
-- **Exit animation:** Reverse (text slides out, camera expands)
-
-### Type 2: FullScreen (Text + PiP)
-```
-┌─────────────────────────────────────────────────────────┐
-│                                                         │
-│   • Bullet point one                        ┌─────────┐ │
-│   • Bullet point two                        │ CAMERA  │ │
-│   • Bullet point three                      │  (PiP)  │ │
-│                                             └─────────┘ │
-│                    OR                                   │
-│                                                         │
-│              Centered Title Text                        │
-│                                                         │
-└─────────────────────────────────────────────────────────┘
-```
-
-- **Camera:** PiP in corner (bottom-right)
-- **Content:** Full-width text area (bullets, numbered, or centered title)
-- **Background:** Cap's existing background
-- **Audio:** Continues
-- **Use case:** Chapter cards, full-width bullet lists
-
-## 3. Stories Breakdown
-
-| Story ID | Story Name | Status | Estimate |
-|----------|------------|--------|----------|
-| S01 | OverlaySegment type + configuration | Complete | 1 day |
-| S02 | Overlay → Scene+Text generation | Planned | 1-2 days |
-| S03 | Split overlay enter/exit animations | Planned | 1-2 days |
-| S04 | OverlayTrack.tsx UI component | Planned | 2-3 days |
-| S05 | Overlay JSON import | Complete | 1 day |
-| S06 | Item timing editor UI | Planned | 1-2 days |
-
-**Total estimate:** 7-11 days
+**Dependencies:** T005 (split-screen + text keyframes) — COMPLETE
 
 ---
 
-## 4. Story Details
+## Plan
 
-### S01 - OverlaySegment Type + Configuration
+### Objective
+Enable coupled overlay segments that combine layout changes with text, simplifying the editing workflow and enabling LLM-generated timeline imports.
 
-**Objective:** Define the data model for overlay segments.
+### Scope
+- **In:** OverlaySegment data model, overlay→scene+text generation, enter/exit animations, OverlayTrack UI, JSON v2.0.0 import, item timing editor
+- **Out:** Complex graphics/images in overlays, auto face detection for camera centering
 
-**Deliverables:**
-- Add `OverlaySegment` type to `crates/project/src/configuration.rs`
-- Add `overlay_segments: Vec<OverlaySegment>` to `TimelineConfiguration`
-- TypeScript types generated via tauri-specta
+### Prior Work (Completed)
+- **S01 (OverlaySegment type):** ✅ Types added to `configuration.rs`, serializes correctly
+- **S05 (Overlay JSON import):** ✅ v2.0.0 import in `timeline_import.rs`, validation, backwards compatible
 
-**Data Model:**
+### Phases
+
+#### Phase 1: Overlay → Scene+Text Generation ✅
+- **Objective:** Convert overlay segments to scene + text segments at render time so existing rendering pipeline handles them
+- **Tasks:**
+  - [x] Task 1.1: Add `generate_scene_segments(overlays: &[OverlaySegment]) -> Vec<SceneSegment>` — Split overlay generates 50/50 split scene (camera right), FullScreen generates PiP mode
+  - [x] Task 1.2: Add `generate_text_segments(overlays: &[OverlaySegment]) -> Vec<TextSegment>` — Position text based on style (Title: center 0.5/0.5, Bullet/Numbered: left 0.25/variable Y with 0.12 spacing)
+  - [x] Task 1.3: Convert item delays to absolute start times, add slide-from-left + fade-in keyframes (0.3s)
+  - [x] Task 1.4: Integrate into rendering pipeline — call generation functions when timeline is processed
+  - [x] Task 1.5: Add warning toast if item delay exceeds segment duration
+- **Acceptance Criteria:**
+  - [x] AC1: Split overlay generates scene segment with 50/50 split, camera right
+  - [x] AC2: FullScreen overlay generates scene segment with PiP mode + text
+  - [x] AC3: Text segments positioned correctly per style (Title centered, Bullet/Numbered left-aligned)
+  - [x] AC4: Item delays converted to absolute start times with slide+fade keyframes
+  - [x] AC5: I/O point changes reuse overlay generation
+- **Files:** `crates/rendering/src/lib.rs`, `crates/rendering/src/overlay.rs` (new)
+- **Dependencies:** None (builds on completed S01 types)
+
+#### Phase 2: Split Overlay Enter/Exit Animations
+- **Objective:** Smooth camera transitions for split overlays that feel like the camera is sliding
+- **Tasks:**
+  - [ ] Task 2.1: Review current split-screen transition code in `scene.rs`
+  - [ ] Task 2.2: Ensure enter animation: camera slides from full-width to right 50%, crops to keep subject centered, background fades in on left, text items slide/fade in
+  - [ ] Task 2.3: Ensure exit animation (to full camera): text slides out left, background fades out, camera expands back to full width
+  - [ ] Task 2.4: Ensure exit animation (to PiP): reuse existing full→PiP transition, background + text fade out as camera shrinks to corner
+- **Acceptance Criteria:**
+  - [ ] AC1: Split enter looks like camera sliding right (not a cut)
+  - [ ] AC2: Split exit to full camera reverses smoothly
+  - [ ] AC3: Split exit to PiP reuses existing transition
+  - [ ] AC4: No jarring cuts between any mode transitions
+- **Files:** `crates/rendering/src/scene.rs`, `crates/rendering/src/lib.rs`
+- **Dependencies:** Phase 1 complete
+
+#### Phase 3: OverlayTrack.tsx UI Component
+- **Objective:** New timeline track for managing overlays visually
+- **Tasks:**
+  - [ ] Task 3.1: Create `OverlayTrack.tsx` component following TextTrack patterns
+  - [ ] Task 3.2: Render segments as colored bars (different color per overlay type)
+  - [ ] Task 3.3: Implement drag to move entire overlay
+  - [ ] Task 3.4: Implement resize handles to change start/end time
+  - [ ] Task 3.5: Implement click to select, integrate with existing selection state
+  - [ ] Task 3.6: Double-click to open item editor (Phase 4)
+  - [ ] Task 3.7: Add overlay track to Timeline/index.tsx when overlays exist
+  - [ ] Task 3.8: Add `overlay` to `TimelineSelectionType` in context.ts
+- **Acceptance Criteria:**
+  - [ ] AC1: Track appears in timeline when overlays exist
+  - [ ] AC2: Segments are draggable (moves entire overlay)
+  - [ ] AC3: Segments are resizable (changes start/end)
+  - [ ] AC4: Selection works and integrates with existing UI
+  - [ ] AC5: Visual distinction between Split and FullScreen types
+- **Files:** `apps/desktop/src/routes/editor/Timeline/OverlayTrack.tsx` (new), `apps/desktop/src/routes/editor/Timeline/index.tsx`, `apps/desktop/src/routes/editor/context.ts`
+- **Dependencies:** Phase 1 complete
+
+#### Phase 4: Item Timing Editor UI
+- **Objective:** Easy editing of overlay items without touching JSON
+- **Tasks:**
+  - [ ] Task 4.1: Create `OverlayEditor.tsx` modal/panel component
+  - [ ] Task 4.2: Show overlay type dropdown (Split/FullScreen)
+  - [ ] Task 4.3: Show editable item list with reorder, add, delete
+  - [ ] Task 4.4: Per-item: delay input, content text input, style dropdown (Title/Bullet/Numbered)
+  - [ ] Task 4.5: Wire up to projectActions for saving changes
+  - [ ] Task 4.6: Open editor on double-click from OverlayTrack
+- **Acceptance Criteria:**
+  - [ ] AC1: Double-click overlay opens editor
+  - [ ] AC2: Can edit item text
+  - [ ] AC3: Can change item delays
+  - [ ] AC4: Can add/remove items
+  - [ ] AC5: Can change item style
+  - [ ] AC6: Changes save to project
+- **Files:** `apps/desktop/src/routes/editor/OverlayEditor.tsx` (new)
+- **Dependencies:** Phase 3 complete
+
+### Technical Specifications
+
+#### Data Model (from S01 — already implemented)
 ```rust
 pub enum OverlayType {
     Split,      // 50/50 camera + text
-    FullScreen, // No camera, just background + text
+    FullScreen, // PiP camera + background + text
 }
 
 pub enum OverlayItemStyle {
@@ -110,114 +136,21 @@ pub struct OverlaySegment {
 }
 ```
 
-**Acceptance Criteria:**
-- [x] Types compile and serialize correctly
-- [x] Existing projects without overlays still load (`#[serde(default)]`)
-- [ ] TypeScript bindings generated (auto-generated on desktop app load)
-
----
-
-### S02 - Overlay → Scene+Text Generation
-
-**Objective:** Convert overlay segments to scene + text segments at render time.
-
-**Approach:** Overlay is a higher-level abstraction. The rendering pipeline doesn't change - we generate the low-level segments it already understands.
-
-**Deliverables:**
-- Function: `generate_scene_segments(overlays: &[OverlaySegment]) -> Vec<SceneSegment>`
-- Function: `generate_text_segments(overlays: &[OverlaySegment]) -> Vec<TextSegment>`
-- Integration point in rendering pipeline
-
-**Text Positioning:**
+#### Text Positioning
 | Style | Position | Font Size | Alignment |
 |-------|----------|-----------|-----------|
 | Title | center (0.5, 0.5) | 64 | Center |
 | Bullet | left (0.25, variable Y) | 40 | Left |
 | Numbered | left (0.25, variable Y) | 40 | Left |
 
-**Vertical Spacing:**
-- First item: Y = 0.25
-- Subsequent items: Y += 0.12
+Vertical spacing: First item Y = 0.25, subsequent items Y += 0.12
 
-**Acceptance Criteria:**
-- [ ] Split overlay generates scene segment (50/50 split, camera right)
-- [ ] FullScreen overlay generates scene segment with PiP mode + text
-- [ ] Text segments generated with correct positions
-- [ ] Item delays converted to absolute start times
-- [ ] Slide-from-left + fade-in keyframes added (0.3s)
-- [ ] Warning toast if item delay exceeds segment duration
+#### Animation Timing
+- Enter transition: 300ms ease-in-out
+- Text fade-in: 300ms per item
+- Exit transition: 300ms ease-in-out
 
----
-
-### S03 - Split Overlay Enter/Exit Animations
-
-**Objective:** Smooth camera transitions for split overlays.
-
-**Enter Animation (from full camera):**
-1. Camera slides from full-width to right 50%
-2. Camera crops to keep subject centered
-3. Background fades in on left
-4. Text items slide/fade in
-
-**Exit Animation (to full camera):**
-1. Text slides out left
-2. Background fades out
-3. Camera expands back to full width
-
-**Exit Animation (to PiP):**
-- Reuse existing full→PiP transition
-- Background + text fade out as camera shrinks to corner
-
-**Deliverables:**
-- Review current split-screen transition code
-- Add "slide" feel if not already present
-- Ensure text exit animation works
-
-**Acceptance Criteria:**
-- [ ] Split enter looks like camera sliding right
-- [ ] Split exit to full camera reverses smoothly
-- [ ] Split exit to PiP reuses existing transition
-- [ ] No jarring cuts
-
----
-
-### S04 - OverlayTrack.tsx UI Component
-
-**Objective:** New timeline track for managing overlays.
-
-**Behavior:**
-- Segments displayed as colored bars (different color per type)
-- Drag segment: moves entire overlay
-- Resize handles: change start/end time
-- Click segment: select it
-- Double-click: open item editor
-
-**Visual Design:**
-```
-Overlay Track:
-├─[Split: 3 items]──────┤    ├─[Full: "Step 2"]─┤
-```
-
-**Deliverables:**
-- `OverlayTrack.tsx` component
-- Segment rendering with type indicators
-- Drag/resize functionality
-- Selection state integration
-
-**Acceptance Criteria:**
-- [ ] Track appears in timeline when overlays exist
-- [ ] Segments draggable
-- [ ] Segments resizable
-- [ ] Selection works
-- [ ] Visual distinction between Split and FullScreen
-
----
-
-### S05 - Overlay JSON Import
-
-**Objective:** Simplified import format for LLM-generated overlays.
-
-**JSON Schema:**
+#### JSON Import Schema (v2.0.0 — already implemented)
 ```json
 {
   "version": "2.0.0",
@@ -228,151 +161,110 @@ Overlay Track:
       "end": 45.0,
       "items": [
         { "delay": 0.5, "text": "Overview", "style": "title" },
-        { "delay": 2.0, "text": "First point", "style": "bullet" },
-        { "delay": 4.0, "text": "Second point", "style": "bullet" }
-      ]
-    },
-    {
-      "type": "fullscreen",
-      "start": 45.0,
-      "end": 48.0,
-      "items": [
-        { "delay": 0.0, "text": "Step 2", "style": "title" }
+        { "delay": 2.0, "text": "First point", "style": "bullet" }
       ]
     }
   ]
 }
 ```
 
-**Deliverables:**
-- Update `timeline_import.rs` to handle v2.0.0 format
-- Validation for overlay-specific rules
-- Convert to OverlaySegment types
+### Decision Matrix
 
-**Acceptance Criteria:**
-- [x] v2.0.0 imports create overlay segments
-- [x] v1.0.0 still works (backwards compatible)
-- [x] Validation errors are clear
-- [x] Success toast shows overlay count (via ImportResult.overlay_segments_imported)
-
----
-
-### S06 - Item Timing Editor UI
-
-**Objective:** Easy editing of overlay items without touching JSON.
-
-**UI Concept:**
-```
-┌─────────────────────────────────────────┐
-│ Edit Overlay                            │
-├─────────────────────────────────────────┤
-│ Type: [Split ▼]                         │
-│                                         │
-│ Items:                                  │
-│ ┌─────────────────────────────────────┐ │
-│ │ [0.5s] Overview          [Title ▼]  │ │
-│ │ [2.0s] First point       [Bullet ▼] │ │
-│ │ [4.0s] Second point      [Bullet ▼] │ │
-│ │                      [+ Add Item]   │ │
-│ └─────────────────────────────────────┘ │
-│                                         │
-│           [Cancel]  [Save]              │
-└─────────────────────────────────────────┘
-```
-
-**Deliverables:**
-- Modal/panel component for editing overlay
-- Editable item list (reorder, add, delete)
-- Delay input per item
-- Style dropdown per item
-- Content text input
-
-**Acceptance Criteria:**
-- [ ] Double-click overlay opens editor
-- [ ] Can edit item text
-- [ ] Can change item delays
-- [ ] Can add/remove items
-- [ ] Can change item style
-- [ ] Changes save to project
+#### Decisions Made
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| Split ratio | 50/50 | Clean visual balance |
+| Camera position | Fixed RIGHT | Consistent, no user confusion |
+| Camera centering | Use existing crop settings | Simpler than auto face detection |
+| PiP position | Fixed bottom-right | Standard convention |
+| Background | Cap's existing system | Reuse, no new config |
+| Text animation | Slide from left + fade | Matches professional editing style |
+| Gap between overlays | Allow tiny gaps | No auto-merge, user controls |
+| FullScreen type | PiP + text overlay | Camera always visible |
+| Track visibility | User manages | No auto-hide of Scene/Text tracks |
+| Item delay > duration | Warning toast | Don't block import |
 
 ---
 
-## 5. Technical Considerations
+## Plan Review
+- **Gate:** ✅ PASS
+- **Reviewed:** 2026-01-29
+- **Summary:** Plan is well-structured and implementable. S01/S05 complete. Minor recommendations for Phase 1 integration (cache invalidation, 50/50 vs 60/40 split ratio) and Phase 3 selection handling.
+- **Issues:** None blocking. 4 action items before Phase 1: clarify integration point, decide split ratio, add overlays to timeline hash, verify selection type location.
 
-### Rendering Pipeline
-- Overlay segments are **converted** to scene + text segments
-- No changes to actual rendering code
-- Conversion happens when timeline is processed
-
-### Track Precedence
-- When overlay segment is active, it controls the scene
-- Existing scene track segments are ignored during overlay
-- Gap between overlays → default PiP mode
-
-### State Management
-- `OverlaySegment` stored in `ProjectConfiguration`
-- Editing overlays uses same `projectActions` pattern
-- Selection state: add `overlay` to `TimelineSelectionType`
-
-### Animation Timing
-- Enter transition: 300ms ease-in-out
-- Text fade-in: 300ms per item
-- Exit transition: 300ms ease-in-out
+→ Details: `plan-review.md`
 
 ---
 
-## 6. Decisions Made
+## Execution Log
 
-| Question | Decision |
-|----------|----------|
-| Split ratio | **50/50** |
-| Camera position | Fixed: **RIGHT** |
-| Camera centering | Use **existing crop settings** (not auto face detection) |
-| PiP position | Fixed: **bottom-right** |
-| Background | Cap's existing system |
-| Text animation | **Slide from left + fade** (ease-in-out) |
-| Gap between overlays | **Allow tiny gaps** (no auto-merge) |
-| FullScreen type | **PiP + text overlay** (not camera hidden) |
-| Track visibility | **User manages** (no auto-hide of Scene/Text tracks) |
-| Item delay > duration | **Warning toast** (don't block import) |
-| Complex graphics | Deferred (simple text first) |
+### Phase 1: Overlay → Scene+Text Generation
+- **Status:** ✅ COMPLETE
+- **Started:** 2026-01-29
+- **Completed:** 2026-01-29
+- **Commits:** `6101815f9`
+- **Files Modified:**
+  - `crates/rendering/src/overlay.rs` (new, +464 lines) — Core generation functions + 12 tests
+  - `crates/rendering/src/lib.rs` (+23/-15 lines) — Module integration and pipeline
+- **Notes:**
+  - Created new `overlay.rs` module with `generate_scene_segments()`, `generate_text_segments()`, `validate_overlay_items()`, and `merge_with_existing()` functions
+  - Split overlay → SplitScreenRight scene mode
+  - FullScreen overlay → Default scene mode (existing PiP behavior)
+  - Text positioning: Title at (0.5, 0.5) 64pt, Bullet/Numbered at (0.25, 0.25+0.12*index) 40pt
+  - Animation: 0.3s slide-from-left (-0.15 offset) + fade-in keyframes
+  - Warning mechanism returns `OverlayWarning` structs when item delay >= segment duration
+  - Integration in `ProjectUniforms::new`: overlays merged with existing scene/text segments at render time
+  - Comprehensive test suite (12 tests) covering all generation scenarios
+
+### Phase 2: Split Overlay Enter/Exit Animations
+- **Status:** —
+- **Started:** —
+- **Completed:** —
+- **Commits:** —
+- **Files Modified:** —
+- **Notes:** —
+
+### Phase 3: OverlayTrack.tsx UI Component
+- **Status:** —
+- **Started:** —
+- **Completed:** —
+- **Commits:** —
+- **Files Modified:** —
+- **Notes:** —
+
+### Phase 4: Item Timing Editor UI
+- **Status:** —
+- **Started:** —
+- **Completed:** —
+- **Commits:** —
+- **Files Modified:** —
+- **Notes:** —
 
 ---
 
-## 7. Files to Create/Modify
+## Code Review Log
 
-### New Files
-- `apps/desktop/src/routes/editor/Timeline/OverlayTrack.tsx`
-- `apps/desktop/src/routes/editor/OverlayEditor.tsx`
+### Phase 1
+- **Gate:** ✅ PASS
+- **Reviewed:** 2026-01-29
+- **Summary:** High-quality implementation with solid test coverage (12 tests). Clean function decomposition, proper constants extraction, and non-invasive integration. Uses existing `SplitScreenRight` (60/40 ratio) rather than true 50/50 — acceptable trade-off. Warnings captured but not yet surfaced to UI (Phase 3/4 responsibility).
+→ Details: `code-review-phase-1.md`
 
-### Modified Files
-- `crates/project/src/configuration.rs` - Add OverlaySegment types
-- `crates/rendering/src/lib.rs` - Generate segments from overlays
-- `apps/desktop/src-tauri/src/timeline_import.rs` - v2.0.0 import
-- `apps/desktop/src/routes/editor/Timeline/index.tsx` - Add overlay track
-- `apps/desktop/src/routes/editor/context.ts` - Overlay selection type
+### Phase 2
+- **Gate:** —
+→ Details: `code-review-phase-2.md`
 
----
+### Phase 3
+- **Gate:** —
+→ Details: `code-review-phase-3.md`
 
-## 8. Reuse from T005
-
-| Component | Reuse | Notes |
-|-----------|-------|-------|
-| `timeline_import.rs` | 80% | Adapt for v2.0.0 schema |
-| `scene.rs` | 100% | Split-screen rendering works |
-| `text.rs` | 100% | Keyframe interpolation works |
-| TextTrack.tsx patterns | 70% | Adapt for OverlayTrack |
-| Scene transitions | 100% | Already have smooth transitions |
+### Phase 4
+- **Gate:** —
+→ Details: `code-review-phase-4.md`
 
 ---
 
-## 9. Success Criteria
-
-After T006 is complete:
-1. [ ] Can import LLM-generated overlay JSON
-2. [ ] Overlays appear as single track segments
-3. [ ] Dragging overlay moves layout + text together
-4. [ ] Can edit overlay items in UI
-5. [ ] Smooth enter/exit animations
-6. [ ] Exit to PiP works correctly
-7. [ ] Gaps between overlays show default PiP view
+## Completion
+- **Completed:** —
+- **Summary:** —
+- **Learnings:** —

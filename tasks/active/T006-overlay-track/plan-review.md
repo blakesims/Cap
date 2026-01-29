@@ -1,90 +1,191 @@
 # T006 Plan Review
 
-**Reviewer:** Claude
-**Date:** 2026-01-28
-**Status:** ✅ READY FOR EXECUTION
+**Reviewer:** Claude Code
+**Date:** 2026-01-29 (Updated)
+**Previous Review:** 2026-01-28
+**Gate:** ✅ PASS (with recommendations)
 
 ---
 
-## Summary
+## Executive Summary
 
-The T006 Overlay Track System plan is well-structured, technically sound, and ready for execution. The plan builds logically on T005's completed work and provides clear scope, acceptance criteria, and technical guidance for each story.
-
----
-
-## Strengths
-
-### Clear Design Philosophy
-- The coupling of text overlays with scene layouts is well-reasoned and simplifies the editing UX
-- The "overlay as higher-level abstraction" approach is smart - generating scene + text segments at render time avoids modifying the existing rendering pipeline
-
-### Well-Defined Data Model (S01)
-- The `OverlaySegment` type is minimal and sufficient
-- `OverlayType` (Split/FullScreen) and `OverlayItemStyle` (Title/Bullet/Numbered) cover the defined use cases
-- Using `#[serde(default)]` for backwards compatibility is the correct approach
-
-### Realistic Scope
-- 6 stories with 7-11 days total is reasonable given T005 established the foundation
-- Heavy reuse from T005 (80% of timeline_import.rs, 100% of scene/text rendering) reduces risk
-- Deferred features (multi-select, export, keyboard shortcuts) are sensible cuts for V1
-
-### Strong Technical Grounding
-- The plan correctly identifies existing code paths:
-  - `crates/project/src/configuration.rs` - verified has TextSegment, SceneSegment patterns to follow
-  - `apps/desktop/src-tauri/src/timeline_import.rs` - v1.0.0 import logic confirmed, ready for v2.0.0 extension
-  - `apps/desktop/src/routes/editor/Timeline/*.tsx` - confirmed existing Track components to pattern-match
-
-### Comprehensive Visual Spec
-- ASCII diagrams clearly show timeline UI, editing workflows, and video output states
-- State transition diagram with animation timings (300ms ease-in-out) is actionable
-- Text positioning reference table provides exact values for implementation
+The T006 plan is **well-structured and implementable**. The data model and import infrastructure (S01, S05) are already complete and solid. The phased approach is logical with clear dependencies. Minor improvements recommended for Phase 1 integration and Phase 3 selection handling.
 
 ---
 
-## Minor Observations (Not Blocking)
+## Prior Work Status (Verified)
 
-### S02 - Overlay → Scene+Text Generation
-- The plan says "Integration point in rendering pipeline" but doesn't specify where. Recommendation: investigate whether this belongs in `crates/rendering/src/lib.rs` or in the frontend during S02 exploration phase.
-
-### S03 - Animation Details
-- The plan says "Add 'slide' feel if not already present" - current split-screen transitions may already have this. Worth a quick check before S03 starts.
-
-### S04 - Selection Type
-- Plan mentions adding `overlay` to `TimelineSelectionType` (in context.ts). The current `TimelineTrackType` union is: `"clip" | "text" | "zoom" | "scene" | "mask"`. Adding `"overlay"` will require updating any switches/conditionals that exhaustively handle these types.
-
-### S06 - Item Timing Editor
-- The UI mockup is well-specified. Consider whether this should be a modal or a slide-out panel based on existing editor patterns.
+| Completed | Status | Notes |
+|-----------|--------|-------|
+| S01 - OverlaySegment type | ✅ | `configuration.rs:817-854` complete, serializes correctly |
+| S05 - v2.0.0 import | ✅ | `timeline_import.rs` with 15 overlay-specific tests |
 
 ---
 
-## Verification Checklist
+## Phase-by-Phase Analysis
 
-| Aspect | Status | Notes |
-|--------|--------|-------|
-| Dependencies satisfied | ✅ | T005 complete (split-screen + text keyframes) |
-| Data model fits existing patterns | ✅ | Follows TimelineSegment, TextSegment conventions |
-| Import system extensible | ✅ | v1.0.0 structure supports version branching |
-| Track patterns established | ✅ | TextTrack.tsx, SceneTrack.tsx provide templates |
-| Rendering pipeline understood | ✅ | Scene/Text segments already render correctly |
-| Decisions documented | ✅ | All 7 design questions resolved in visual-spec.md |
+### Phase 1: Overlay → Scene+Text Generation
+
+**Assessment:** ✅ Ready to implement
+
+**Strengths:**
+- Clear separation: overlays stay stored as `OverlaySegment`, rendered via scene+text generation
+- Reuses existing rendering pipeline — no changes to `scene.rs` internals needed
+- Toast warning for delay > duration is a good UX touch
+
+**Concerns & Recommendations:**
+
+1. **Integration Point:** Plan says "integrate into rendering pipeline" but doesn't specify where. Rendering flows through `RecordingSegmentDecoders::get_frames()` in `crates/rendering/src/lib.rs`.
+
+   **Recommendation:** Create a `TimelineResolver` that merges `overlay_segments` into existing `scene_segments` and `text_segments` before rendering. This keeps the renderer unchanged.
+
+2. **Cache Invalidation:** Per CLAUDE.md, audio pre-renders entire timeline using hash-based cache. Overlay changes must invalidate this cache.
+
+   **Recommendation:** Add `overlay_segments` to `compute_timeline_hash()`.
+
+3. **Split 50/50 vs 60/40:** Plan says "50/50 split" but existing `SplitScreenRight` uses 60/40 ratio (`scene.rs:339` — camera at x=0.6).
+
+   **Recommendation:** Either accept existing 60/40 ratio or add new `SceneMode::SplitScreen5050Right`.
+
+4. **Text Positioning:** Y-spacing (first Y=0.25, subsequent Y+=0.12) and font sizes (Title=64, Bullet/Numbered=40) need integration with existing `TextSegment.font_size` field.
+
+**Files:** `crates/rendering/src/overlay.rs` (new), `crates/rendering/src/lib.rs`
 
 ---
 
-## Recommendation
+### Phase 2: Split Overlay Enter/Exit Animations
 
-**APPROVE FOR EXECUTION**
+**Assessment:** ✅ Mostly covered by existing code
 
-The plan is complete and well-thought-out. Begin with S01 (data model) which is foundational and low-risk. The modular story structure allows for course correction if issues arise.
+**Analysis:**
+- Existing `scene.rs` already handles split-screen transitions with 300ms ease-in-out
+- `split_camera_transition_opacity()` and `split_camera_x_ratio()` interpolate properly
+- Current transitions may already satisfy "sliding" requirement
+
+**Concerns:**
+
+1. **Background Fade:** Current split transitions don't explicitly fade background. Plan says "background fades in on left."
+
+2. **Text Exit:** Phase 2 mentions "text slides out left" but Phase 1 handles text keyframes. Clarify responsibility.
+
+**Recommendation:** Phase 2 may be minimal. Plan visual verification step before implementing additional animation code.
+
+**Files:** `crates/rendering/src/scene.rs`, `crates/rendering/src/lib.rs`
 
 ---
 
-## Suggested Execution Order
+### Phase 3: OverlayTrack.tsx UI Component
 
-1. **S01** - OverlaySegment type + configuration (foundational)
-2. **S05** - Overlay JSON import (enables testing with real data)
-3. **S02** - Overlay → Scene+Text generation (core logic)
-4. **S03** - Split overlay enter/exit animations (polish)
-5. **S04** - OverlayTrack.tsx UI component (user-facing)
-6. **S06** - Item timing editor UI (editing experience)
+**Assessment:** ✅ Ready to implement
 
-This order prioritizes having testable data flow before building UI.
+**Strengths:**
+- Clear pattern from `TextTrack.tsx`
+- Existing `Track.tsx` provides reusable components (`SegmentRoot`, `SegmentHandle`, `SegmentContent`)
+- Selection types already include: `clip`, `zoom`, `mask`, `text`, `scene`
+
+**Concerns:**
+
+1. **Selection Type Location:** Task 3.8 mentions `context.ts` but selection is typed inline:
+   ```ts
+   selection: null | { type: "clip" | "zoom" | "mask" | "text" | "scene"; indices: number[] }
+   ```
+   Verify exact location (may be in generated `tauri.ts` or inline in `editorState`).
+
+2. **projectActions:** Need methods for overlay operations:
+   - `updateOverlaySegment(index, updates)`
+   - `deleteOverlaySegments(indices)`
+
+**Files:** `apps/desktop/src/routes/editor/Timeline/OverlayTrack.tsx` (new), `Timeline/index.tsx`, `context.ts`
+
+---
+
+### Phase 4: Item Timing Editor UI
+
+**Assessment:** ✅ Ready to implement
+
+**Strengths:**
+- Self-contained modal/panel
+- Standard list management (reorder, add, delete)
+
+**Concerns:**
+
+1. **Real-time Preview:** Should delay changes trigger preview re-render?
+
+2. **Undo/Redo:** Use `projectHistory.pause()` pattern during editing.
+
+**Files:** `apps/desktop/src/routes/editor/OverlayEditor.tsx` (new)
+
+---
+
+## Data Model Verification (S01)
+
+Implementation in `configuration.rs:817-854` is correct:
+
+```rust
+pub enum OverlayType { Split, FullScreen }
+pub enum OverlayItemStyle { Title, Bullet, Numbered }
+pub struct OverlayItem { delay: f64, content: String, style: OverlayItemStyle }
+pub struct OverlaySegment { start: f64, end: f64, overlay_type: OverlayType, items: Vec<OverlayItem> }
+```
+
+All fields have `#[serde(default)]`. `TimelineConfiguration.overlay_segments` exists at line 868. ✅
+
+---
+
+## Import Verification (S05)
+
+`timeline_import.rs` implementation complete:
+- v2.0.0 version support (line 203)
+- Full overlay validation (lines 300-345)
+- Proper error types for overlay issues
+- Warning for delay > duration (non-blocking)
+- 15 overlay-specific tests ✅
+
+---
+
+## Technical Specification Gaps
+
+| Gap | Impact | Recommendation |
+|-----|--------|----------------|
+| Exit animation keyframes not specified | Medium | Add slide-out-left + fade-out spec |
+| FullScreen PiP exact position | Low | Specify x,y coordinates or "use existing" |
+| FullScreen background handling | Low | Clarify: Cap's background system or dark overlay? |
+
+---
+
+## Risk Assessment
+
+| Risk | Likelihood | Impact | Mitigation |
+|------|------------|--------|------------|
+| Split 50/50 vs 60/40 mismatch | Medium | Low | Document decision or use existing ratio |
+| Cache invalidation missed | Medium | Medium | Add overlays to hash computation |
+| Text animation timing edge cases | Low | Medium | Test overlapping overlay/text scenarios |
+| Selection type update location | Low | Low | Search codebase for type definition |
+
+---
+
+## Recommended Improvements
+
+### For Phase 1:
+- Add AC: "Overlay generation is idempotent (no duplicate scene/text)"
+- Specify cache invalidation approach
+
+### For Phase 3:
+- Add AC: "Deleting overlay via track removes from project configuration"
+- Verify selection type definition location before starting
+
+---
+
+## Conclusion
+
+**Gate: ✅ PASS**
+
+The plan is ready for implementation. S01 and S05 are complete. Proceed to Phase 1.
+
+**Action Items Before Phase 1:**
+1. Clarify integration point for overlay generation in rendering pipeline
+2. Decide on 50/50 vs existing 60/40 split ratio
+3. Add overlay_segments to timeline hash computation
+4. Verify selection type definition location
+
+No blocking issues.
