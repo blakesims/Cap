@@ -87,7 +87,13 @@ export const getPreviewResolution = (
 	return { x: width, y: height };
 };
 
-export type TimelineTrackType = "clip" | "text" | "zoom" | "scene" | "mask" | "overlay";
+export type TimelineTrackType =
+	| "clip"
+	| "text"
+	| "zoom"
+	| "scene"
+	| "mask"
+	| "overlay";
 
 export const MAX_ZOOM_IN = 3;
 const PROJECT_SAVE_DEBOUNCE_MS = 250;
@@ -453,25 +459,31 @@ export const [EditorContextProvider, useEditorContext] = createContextProvider(
 				setProject(
 					"timeline",
 					"overlaySegments" as keyof EditorTimelineConfiguration,
-					produce((segments: { start: number; end: number; items?: { delay: number }[] }[] | undefined) => {
-						const segment = segments?.[index];
-						if (!segment) return;
+					produce(
+						(
+							segments:
+								| { start: number; end: number; items?: { delay: number }[] }[]
+								| undefined,
+						) => {
+							const segment = segments?.[index];
+							if (!segment) return;
 
-						const duration = segment.end - segment.start;
-						const remaining = duration - time;
-						if (time < 1 || remaining < 1) return;
+							const duration = segment.end - segment.start;
+							const remaining = duration - time;
+							if (time < 1 || remaining < 1) return;
 
-						segments.splice(index + 1, 0, {
-							...segment,
-							start: segment.start + time,
-							end: segment.end,
-							items: segment.items?.map((item) => ({
-								...item,
-								delay: Math.max(0, item.delay - time),
-							})),
-						});
-						segments[index].end = segment.start + time;
-					}) as never,
+							segments.splice(index + 1, 0, {
+								...segment,
+								start: segment.start + time,
+								end: segment.end,
+								items: segment.items?.map((item) => ({
+									...item,
+									delay: Math.max(0, item.delay - time),
+								})),
+							});
+							segments[index].end = segment.start + time;
+						},
+					) as never,
 				);
 			},
 			deleteOverlaySegments: (segmentIndices: number[]) => {
@@ -491,6 +503,68 @@ export const [EditorContextProvider, useEditorContext] = createContextProvider(
 					);
 					setEditorState("timeline", "selection", null);
 				});
+			},
+			updateOverlay: (
+				overlayIndex: number,
+				updates: Partial<{
+					overlayType: unknown;
+					start: number;
+					end: number;
+				}>,
+			) => {
+				setProject(
+					"timeline",
+					"overlaySegments" as keyof EditorTimelineConfiguration,
+					overlayIndex as never,
+					produce((segment: unknown) => {
+						if (!segment || typeof segment !== "object") return;
+						Object.assign(segment, updates);
+					}) as never,
+				);
+			},
+			updateOverlayItem: (
+				overlayIndex: number,
+				itemIndex: number,
+				updates: Partial<{
+					content: string;
+					style: unknown;
+					delay: number;
+				}>,
+			) => {
+				setProject(
+					"timeline",
+					"overlaySegments" as keyof EditorTimelineConfiguration,
+					overlayIndex as never,
+					"items" as never,
+					itemIndex as never,
+					produce((item: unknown) => {
+						if (!item || typeof item !== "object") return;
+						Object.assign(item, updates);
+					}) as never,
+				);
+			},
+			addOverlayItem: (overlayIndex: number, item: unknown) => {
+				setProject(
+					"timeline",
+					"overlaySegments" as keyof EditorTimelineConfiguration,
+					overlayIndex as never,
+					"items" as never,
+					produce((items: unknown[]) => {
+						items.push(item);
+					}) as never,
+				);
+			},
+			removeOverlayItem: (overlayIndex: number, itemIndex: number) => {
+				setProject(
+					"timeline",
+					"overlaySegments" as keyof EditorTimelineConfiguration,
+					overlayIndex as never,
+					"items" as never,
+					produce((items: unknown[]) => {
+						if (items.length <= 1) return;
+						items.splice(itemIndex, 1);
+					}) as never,
+				);
 			},
 			setClipSegmentTimescale: (index: number, timescale: number) => {
 				setProject(
@@ -535,7 +609,9 @@ export const [EditorContextProvider, useEditorContext] = createContextProvider(
 							textSegment.end += diff(textSegment.end);
 						}
 
-						const overlaySegments = (timeline as { overlaySegments?: { start: number; end: number }[] }).overlaySegments;
+						const overlaySegments = (
+							timeline as { overlaySegments?: { start: number; end: number }[] }
+						).overlaySegments;
 						if (overlaySegments) {
 							for (const overlaySegment of overlaySegments) {
 								overlaySegment.start += diff(overlaySegment.start);
@@ -1115,7 +1191,9 @@ export const [EditorContextProvider, useEditorContext] = createContextProvider(
 						"timeline",
 						"overlaySegments" as keyof EditorTimelineConfiguration,
 						((segments: { start: number; end: number }[] | undefined) =>
-							segments?.filter((s) => !(s.start >= inTime && s.end <= outTime))) as never,
+							segments?.filter(
+								(s) => !(s.start >= inTime && s.end <= outTime),
+							)) as never,
 					);
 
 					editorActions.rippleAdjustOverlays(rippleStartTime, -gapDuration);
@@ -1196,17 +1274,19 @@ export const [EditorContextProvider, useEditorContext] = createContextProvider(
 					setProject(
 						"timeline",
 						"overlaySegments" as keyof EditorTimelineConfiguration,
-						produce((segments: { start: number; end: number }[] | undefined) => {
-							if (!segments) return;
-							for (const seg of segments) {
-								if (seg.start >= startTime) {
-									seg.start += timeDelta;
-									seg.end += timeDelta;
-								} else if (seg.end > startTime) {
-									seg.end = Math.max(seg.start, seg.end + timeDelta);
+						produce(
+							(segments: { start: number; end: number }[] | undefined) => {
+								if (!segments) return;
+								for (const seg of segments) {
+									if (seg.start >= startTime) {
+										seg.start += timeDelta;
+										seg.end += timeDelta;
+									} else if (seg.end > startTime) {
+										seg.end = Math.max(seg.start, seg.end + timeDelta);
+									}
 								}
-							}
-						}) as never,
+							},
+						) as never,
 					);
 				});
 			},

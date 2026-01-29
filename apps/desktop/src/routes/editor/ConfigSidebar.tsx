@@ -74,6 +74,12 @@ import {
 } from "./projectConfig";
 import ShadowSettings from "./ShadowSettings";
 import { TextInput } from "./TextInput";
+import type {
+	OverlayItem,
+	OverlayItemStyle,
+	OverlaySegment,
+	OverlayType,
+} from "./Timeline/OverlayTrack";
 import type { TextSegment } from "./text";
 import {
 	ComingSoonTooltip,
@@ -1183,6 +1189,75 @@ export function ConfigSidebar() {
 											</div>
 										</div>
 									</Show>
+								)}
+							</Show>
+							<Show
+								when={(() => {
+									const overlaySelection = selection();
+									if (overlaySelection.type !== "overlay") return;
+
+									const segments = overlaySelection.indices
+										.map((index) => ({
+											index,
+											segment: project.timeline?.overlaySegments?.[index],
+										}))
+										.filter(
+											(
+												item,
+											): item is { index: number; segment: OverlaySegment } =>
+												item.segment !== undefined,
+										);
+
+									if (segments.length === 0) {
+										setEditorState("timeline", "selection", null);
+										return;
+									}
+									return { selection: overlaySelection, segments };
+								})()}
+							>
+								{(value) => (
+									<div class="space-y-4">
+										<div class="flex flex-row justify-between items-center">
+											<div class="flex gap-2 items-center">
+												<EditorButton
+													onClick={() =>
+														setEditorState("timeline", "selection", null)
+													}
+													leftIcon={<IconLucideCheck />}
+												>
+													Done
+												</EditorButton>
+												<span class="text-sm text-gray-10">
+													{value().segments.length} overlay{" "}
+													{value().segments.length === 1
+														? "segment"
+														: "segments"}{" "}
+													selected
+												</span>
+											</div>
+											<EditorButton
+												variant="danger"
+												onClick={() =>
+													projectActions.deleteOverlaySegments(
+														value().segments.map((s) => s.index),
+													)
+												}
+												leftIcon={<IconCapTrash />}
+											>
+												Delete
+											</EditorButton>
+										</div>
+										<For each={value().segments}>
+											{(item) => (
+												<div class="p-4 rounded-lg border border-gray-200">
+													<OverlaySegmentConfig
+														segment={item.segment}
+														segmentIndex={item.index}
+													/>
+												</div>
+											)}
+										</For>
+									</div>
 								)}
 							</Show>
 						</Suspense>
@@ -3750,6 +3825,251 @@ function hexToRgb(hex: string): [number, number, number, number] | null {
 	}
 
 	return [...rgb, 255];
+}
+
+function OverlaySegmentConfig(props: {
+	segmentIndex: number;
+	segment: OverlaySegment;
+}) {
+	const { projectActions } = useEditorContext();
+
+	const overlayTypeOptions: { value: OverlayType; label: string }[] = [
+		{ value: "split", label: "Split (50/50)" },
+		{ value: "fullScreen", label: "Full Screen" },
+	];
+
+	const itemStyleOptions: { value: OverlayItemStyle; label: string }[] = [
+		{ value: "title", label: "Title" },
+		{ value: "bullet", label: "Bullet" },
+		{ value: "numbered", label: "Numbered" },
+	];
+
+	const segmentDuration = () => props.segment.end - props.segment.start;
+
+	const handleAddItem = () => {
+		const maxDelay = props.segment.items.reduce(
+			(max, item) => Math.max(max, item.delay),
+			0,
+		);
+		projectActions.addOverlayItem(props.segmentIndex, {
+			delay: Math.min(maxDelay + 0.5, segmentDuration()),
+			content: "New item",
+			style: "bullet" as OverlayItemStyle,
+		});
+	};
+
+	return (
+		<div class="space-y-4">
+			<Field
+				name={`Overlay ${props.segmentIndex + 1}`}
+				icon={<IconLucideLayout class="size-4" />}
+			>
+				<div class="flex flex-col gap-2">
+					<KSelect
+						options={overlayTypeOptions}
+						optionValue="value"
+						optionTextValue="label"
+						value={
+							overlayTypeOptions.find(
+								(o) => o.value === props.segment.overlayType,
+							) || overlayTypeOptions[0]
+						}
+						onChange={(value) => {
+							if (!value) return;
+							projectActions.updateOverlay(props.segmentIndex, {
+								overlayType: value.value,
+							});
+						}}
+						itemComponent={(selectItemProps) => (
+							<MenuItem<typeof KSelect.Item>
+								as={KSelect.Item}
+								item={selectItemProps.item}
+							>
+								<KSelect.ItemLabel class="flex-1">
+									{selectItemProps.item.rawValue.label}
+								</KSelect.ItemLabel>
+								<KSelect.ItemIndicator class="ml-auto text-blue-9">
+									<IconCapCircleCheck />
+								</KSelect.ItemIndicator>
+							</MenuItem>
+						)}
+					>
+						<KSelect.Trigger class="flex w-full items-center justify-between rounded-md border border-gray-3 bg-gray-2 px-3 py-2 text-sm text-gray-12 transition-colors hover:border-gray-4 hover:bg-gray-3 focus:border-blue-9 focus:outline-none focus:ring-1 focus:ring-blue-9">
+							<KSelect.Value<{
+								value: OverlayType;
+								label: string;
+							}> class="truncate">
+								{(state) => state.selectedOption()?.label || "Split (50/50)"}
+							</KSelect.Value>
+							<KSelect.Icon>
+								<IconCapChevronDown class="size-4 shrink-0 transform transition-transform ui-expanded:rotate-180 text-[--gray-500]" />
+							</KSelect.Icon>
+						</KSelect.Trigger>
+						<KSelect.Portal>
+							<PopperContent<typeof KSelect.Content>
+								as={KSelect.Content}
+								class={cx(topSlideAnimateClasses, "z-50")}
+							>
+								<MenuItemList<typeof KSelect.Listbox>
+									class="overflow-y-auto max-h-40"
+									as={KSelect.Listbox}
+								/>
+							</PopperContent>
+						</KSelect.Portal>
+					</KSelect>
+					<p class="text-xs text-gray-10">
+						{props.segment.overlayType === "split"
+							? "Camera on right 50%, background + text on left 50%"
+							: "PiP camera in corner, full-width text overlay"}
+					</p>
+				</div>
+			</Field>
+
+			<Field
+				name="Items"
+				icon={<IconLucideList class="size-4" />}
+				value={
+					<Button
+						onClick={handleAddItem}
+						class="!px-2 !py-1 !text-xs"
+						variant="secondary"
+						size="xs"
+					>
+						<IconCapPlus class="size-3 mr-0.5" />
+						Add
+					</Button>
+				}
+			>
+				<div class="flex flex-col gap-3">
+					<For each={props.segment.items}>
+						{(item, index) => (
+							<div class="flex flex-col gap-2 p-3 border border-gray-3 rounded-lg bg-gray-2/50">
+								<div class="flex items-center gap-2">
+									<span class="text-xs text-gray-10 font-medium w-5">
+										{index() + 1}.
+									</span>
+									<Input
+										value={item.content}
+										onInput={(e) =>
+											projectActions.updateOverlayItem(
+												props.segmentIndex,
+												index(),
+												{ content: e.currentTarget.value },
+											)
+										}
+										placeholder="Item text"
+										class="flex-1"
+									/>
+									<button
+										type="button"
+										class="p-1.5 rounded hover:bg-red-3 text-gray-10 hover:text-red-9 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+										onClick={() =>
+											projectActions.removeOverlayItem(
+												props.segmentIndex,
+												index(),
+											)
+										}
+										disabled={props.segment.items.length <= 1}
+										title="Remove item"
+									>
+										<IconCapTrash class="size-4" />
+									</button>
+								</div>
+
+								<div class="flex items-center gap-3 ml-7">
+									<Subfield name="Delay (s)">
+										<input
+											type="number"
+											step="0.1"
+											min="0"
+											max={segmentDuration()}
+											value={item.delay.toFixed(1)}
+											onInput={(e) => {
+												const value = Number.parseFloat(e.currentTarget.value);
+												if (!Number.isNaN(value) && value >= 0) {
+													projectActions.updateOverlayItem(
+														props.segmentIndex,
+														index(),
+														{ delay: value },
+													);
+												}
+											}}
+											class="w-20 px-2 py-1 text-xs border border-gray-3 rounded bg-gray-2 text-gray-12 focus:outline-none focus:ring-1 focus:ring-blue-9"
+										/>
+									</Subfield>
+
+									<Subfield name="Style">
+										<KSelect
+											options={itemStyleOptions}
+											optionValue="value"
+											optionTextValue="label"
+											value={
+												itemStyleOptions.find((o) => o.value === item.style) ||
+												itemStyleOptions[0]
+											}
+											onChange={(value) => {
+												if (!value) return;
+												projectActions.updateOverlayItem(
+													props.segmentIndex,
+													index(),
+													{ style: value.value },
+												);
+											}}
+											itemComponent={(selectItemProps) => (
+												<MenuItem<typeof KSelect.Item>
+													as={KSelect.Item}
+													item={selectItemProps.item}
+												>
+													<KSelect.ItemLabel>
+														{selectItemProps.item.rawValue.label}
+													</KSelect.ItemLabel>
+													<KSelect.ItemIndicator class="ml-auto text-blue-9">
+														<IconCapCircleCheck />
+													</KSelect.ItemIndicator>
+												</MenuItem>
+											)}
+										>
+											<KSelect.Trigger class="flex items-center justify-between gap-1 px-2 py-1 text-xs border border-gray-3 rounded bg-gray-2 hover:bg-gray-3 transition-colors text-gray-12 min-w-[90px]">
+												<KSelect.Value<{
+													value: OverlayItemStyle;
+													label: string;
+												}>>
+													{(state) => state.selectedOption()?.label || "Bullet"}
+												</KSelect.Value>
+												<KSelect.Icon class="text-gray-10">
+													<IconCapChevronDown class="size-3 shrink-0 transform transition-transform ui-expanded:rotate-180" />
+												</KSelect.Icon>
+											</KSelect.Trigger>
+											<KSelect.Portal>
+												<PopperContent<typeof KSelect.Content>
+													as={KSelect.Content}
+													class={cx(topSlideAnimateClasses, "z-50")}
+												>
+													<MenuItemList<typeof KSelect.Listbox>
+														class="overflow-y-auto max-h-40"
+														as={KSelect.Listbox}
+													/>
+												</PopperContent>
+											</KSelect.Portal>
+										</KSelect>
+									</Subfield>
+								</div>
+
+								<Show when={item.delay >= segmentDuration()}>
+									<div class="ml-7 text-xs text-amber-9 flex items-center gap-1">
+										<IconCapAlertCircle class="size-3" />
+										Delay exceeds segment duration (
+										{segmentDuration().toFixed(1)}
+										s)
+									</div>
+								</Show>
+							</div>
+						)}
+					</For>
+				</div>
+			</Field>
+		</div>
+	);
 }
 
 const CHECKERED_BUTTON_BACKGROUND = `url("data:image/svg+xml,%3Csvg width='16' height='16' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='8' height='8' fill='%23a0a0a0'/%3E%3Crect x='8' y='8' width='8' height='8' fill='%23a0a0a0'/%3E%3C/svg%3E")`;
