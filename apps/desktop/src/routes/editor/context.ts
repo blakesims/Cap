@@ -512,6 +512,9 @@ export const [EditorContextProvider, useEditorContext] = createContextProvider(
 					end: number;
 				}>,
 			) => {
+				const segments = project.timeline?.overlaySegments;
+				if (!segments || overlayIndex < 0 || overlayIndex >= segments.length)
+					return;
 				setProject(
 					"timeline",
 					"overlaySegments" as keyof EditorTimelineConfiguration,
@@ -531,6 +534,9 @@ export const [EditorContextProvider, useEditorContext] = createContextProvider(
 					delay: number;
 				}>,
 			) => {
+				const segment = project.timeline?.overlaySegments?.[overlayIndex];
+				if (!segment || itemIndex < 0 || itemIndex >= segment.items.length)
+					return;
 				setProject(
 					"timeline",
 					"overlaySegments" as keyof EditorTimelineConfiguration,
@@ -544,6 +550,8 @@ export const [EditorContextProvider, useEditorContext] = createContextProvider(
 				);
 			},
 			addOverlayItem: (overlayIndex: number, item: unknown) => {
+				const segment = project.timeline?.overlaySegments?.[overlayIndex];
+				if (!segment) return;
 				setProject(
 					"timeline",
 					"overlaySegments" as keyof EditorTimelineConfiguration,
@@ -555,6 +563,9 @@ export const [EditorContextProvider, useEditorContext] = createContextProvider(
 				);
 			},
 			removeOverlayItem: (overlayIndex: number, itemIndex: number) => {
+				const segment = project.timeline?.overlaySegments?.[overlayIndex];
+				if (!segment || itemIndex < 0 || itemIndex >= segment.items.length)
+					return;
 				setProject(
 					"timeline",
 					"overlaySegments" as keyof EditorTimelineConfiguration,

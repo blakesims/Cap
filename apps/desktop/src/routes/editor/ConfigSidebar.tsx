@@ -3990,7 +3990,7 @@ function OverlaySegmentConfig(props: {
 													projectActions.updateOverlayItem(
 														props.segmentIndex,
 														index(),
-														{ delay: value },
+														{ delay: Math.min(value, segmentDuration()) },
 													);
 												}
 											}}
