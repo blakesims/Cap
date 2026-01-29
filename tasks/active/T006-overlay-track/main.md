@@ -53,18 +53,18 @@ Enable coupled overlay segments that combine layout changes with text, simplifyi
 - **Files:** `crates/rendering/src/lib.rs`, `crates/rendering/src/overlay.rs` (new)
 - **Dependencies:** None (builds on completed S01 types)
 
-#### Phase 2: Split Overlay Enter/Exit Animations
+#### Phase 2: Split Overlay Enter/Exit Animations ✅
 - **Objective:** Smooth camera transitions for split overlays that feel like the camera is sliding
 - **Tasks:**
-  - [ ] Task 2.1: Review current split-screen transition code in `scene.rs`
-  - [ ] Task 2.2: Ensure enter animation: camera slides from full-width to right 50%, crops to keep subject centered, background fades in on left, text items slide/fade in
-  - [ ] Task 2.3: Ensure exit animation (to full camera): text slides out left, background fades out, camera expands back to full width
-  - [ ] Task 2.4: Ensure exit animation (to PiP): reuse existing full→PiP transition, background + text fade out as camera shrinks to corner
+  - [x] Task 2.1: Review current split-screen transition code in `scene.rs`
+  - [x] Task 2.2: Ensure enter animation: camera slides from full-width to right 50%, crops to keep subject centered, background fades in on left, text items slide/fade in
+  - [x] Task 2.3: Ensure exit animation (to full camera): text slides out left, background fades out, camera expands back to full width
+  - [x] Task 2.4: Ensure exit animation (to PiP): reuse existing full→PiP transition, background + text fade out as camera shrinks to corner
 - **Acceptance Criteria:**
-  - [ ] AC1: Split enter looks like camera sliding right (not a cut)
-  - [ ] AC2: Split exit to full camera reverses smoothly
-  - [ ] AC3: Split exit to PiP reuses existing transition
-  - [ ] AC4: No jarring cuts between any mode transitions
+  - [x] AC1: Split enter looks like camera sliding right (not a cut)
+  - [x] AC2: Split exit to full camera reverses smoothly
+  - [x] AC3: Split exit to PiP reuses existing transition
+  - [x] AC4: No jarring cuts between any mode transitions
 - **Files:** `crates/rendering/src/scene.rs`, `crates/rendering/src/lib.rs`
 - **Dependencies:** Phase 1 complete
 
@@ -217,12 +217,20 @@ Vertical spacing: First item Y = 0.25, subsequent items Y += 0.12
   - Comprehensive test suite (12 tests) covering all generation scenarios
 
 ### Phase 2: Split Overlay Enter/Exit Animations
-- **Status:** —
-- **Started:** —
-- **Completed:** —
-- **Commits:** —
-- **Files Modified:** —
-- **Notes:** —
+- **Status:** ✅ COMPLETE (no code changes required)
+- **Started:** 2026-01-29
+- **Completed:** 2026-01-29
+- **Commits:** — (existing code satisfies requirements)
+- **Files Modified:** — (none)
+- **Notes:**
+  - Reviewed existing `scene.rs` transition implementation
+  - All enter/exit animations already implemented via:
+    - `split_camera_x_ratio()`: Interpolates camera X from 0.0↔0.6 with bezier easing (0.3s)
+    - `split_display_x_ratio()`: Interpolates display/background position
+    - `split_camera_transition_opacity()`: Fades camera in/out during transitions
+  - Text slide+fade animations handled by Phase 1 keyframes in `overlay.rs`
+  - Exit to PiP uses existing `regular_camera_transition_opacity()` mechanism
+  - No jarring cuts: all transitions use 0.3s bezier easing, `MIN_GAP_FOR_TRANSITION` (0.5s) prevents unnecessary transitions
 
 ### Phase 3: OverlayTrack.tsx UI Component
 - **Status:** —
