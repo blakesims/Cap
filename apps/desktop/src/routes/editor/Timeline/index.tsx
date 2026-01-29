@@ -12,6 +12,8 @@ import {
 } from "solid-js";
 import { produce } from "solid-js/store";
 
+import { OverlayEditor } from "../OverlayEditor";
+
 import "./styles.css";
 
 import Tooltip from "~/components/Tooltip";
@@ -247,6 +249,19 @@ export function Timeline() {
 	let maskSegmentDragState = { type: "idle" } as MaskSegmentDragState;
 	let textSegmentDragState = { type: "idle" } as TextSegmentDragState;
 	let overlaySegmentDragState = { type: "idle" } as OverlaySegmentDragState;
+
+	const [overlayEditorState, setOverlayEditorState] = createSignal<{
+		open: boolean;
+		segmentIndex: number;
+	}>({ open: false, segmentIndex: -1 });
+
+	const handleOpenOverlayEditor = (index: number) => {
+		setOverlayEditorState({ open: true, segmentIndex: index });
+	};
+
+	const handleCloseOverlayEditor = () => {
+		setOverlayEditorState({ open: false, segmentIndex: -1 });
+	};
 
 	let pendingZoomDelta = 0;
 	let pendingZoomOrigin: number | null = null;
@@ -645,6 +660,7 @@ export function Timeline() {
 											overlaySegmentDragState = v;
 										}}
 										handleUpdatePlayhead={handleUpdatePlayhead}
+										onDoubleClick={handleOpenOverlayEditor}
 									/>
 								</TrackRow>
 							</Show>
@@ -652,6 +668,11 @@ export function Timeline() {
 					</div>
 				</div>
 			</div>
+			<OverlayEditor
+				open={overlayEditorState().open}
+				segmentIndex={overlayEditorState().segmentIndex}
+				onClose={handleCloseOverlayEditor}
+			/>
 		</TimelineContextProvider>
 	);
 }

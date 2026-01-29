@@ -3,7 +3,7 @@
 ## Meta
 - **Status:** IN-PROGRESS
 - **Created:** 2026-01-28
-- **Last Updated:** 2026-01-29 (Phase 3 reviewed)
+- **Last Updated:** 2026-01-29 (Phase 4 complete, pending review)
 - **Blocked Reason:** —
 
 ## Task
@@ -88,23 +88,23 @@ Enable coupled overlay segments that combine layout changes with text, simplifyi
 - **Files:** `apps/desktop/src/routes/editor/Timeline/OverlayTrack.tsx` (new), `apps/desktop/src/routes/editor/Timeline/index.tsx`, `apps/desktop/src/routes/editor/context.ts`
 - **Dependencies:** Phase 1 complete
 
-#### Phase 4: Item Timing Editor UI
+#### Phase 4: Item Timing Editor UI ✅
 - **Objective:** Easy editing of overlay items without touching JSON
 - **Tasks:**
-  - [ ] Task 4.1: Create `OverlayEditor.tsx` modal/panel component
-  - [ ] Task 4.2: Show overlay type dropdown (Split/FullScreen)
-  - [ ] Task 4.3: Show editable item list with reorder, add, delete
-  - [ ] Task 4.4: Per-item: delay input, content text input, style dropdown (Title/Bullet/Numbered)
-  - [ ] Task 4.5: Wire up to projectActions for saving changes
-  - [ ] Task 4.6: Open editor on double-click from OverlayTrack
+  - [x] Task 4.1: Create `OverlayEditor.tsx` modal/panel component
+  - [x] Task 4.2: Show overlay type dropdown (Split/FullScreen)
+  - [x] Task 4.3: Show editable item list with reorder, add, delete
+  - [x] Task 4.4: Per-item: delay input, content text input, style dropdown (Title/Bullet/Numbered)
+  - [x] Task 4.5: Wire up to projectActions for saving changes
+  - [x] Task 4.6: Open editor on double-click from OverlayTrack
 - **Acceptance Criteria:**
-  - [ ] AC1: Double-click overlay opens editor
-  - [ ] AC2: Can edit item text
-  - [ ] AC3: Can change item delays
-  - [ ] AC4: Can add/remove items
-  - [ ] AC5: Can change item style
-  - [ ] AC6: Changes save to project
-- **Files:** `apps/desktop/src/routes/editor/OverlayEditor.tsx` (new)
+  - [x] AC1: Double-click overlay opens editor
+  - [x] AC2: Can edit item text
+  - [x] AC3: Can change item delays
+  - [x] AC4: Can add/remove items
+  - [x] AC5: Can change item style
+  - [x] AC6: Changes save to project
+- **Files:** `apps/desktop/src/routes/editor/OverlayEditor.tsx` (new), `apps/desktop/src/routes/editor/Timeline/index.tsx`
 - **Dependencies:** Phase 3 complete
 
 ### Technical Specifications
@@ -256,12 +256,22 @@ Vertical spacing: First item Y = 0.25, subsequent items Y += 0.12
   - Click empty track area adds new overlay at playhead position
 
 ### Phase 4: Item Timing Editor UI
-- **Status:** —
-- **Started:** —
-- **Completed:** —
+- **Status:** ✅ COMPLETE
+- **Started:** 2026-01-29
+- **Completed:** 2026-01-29
 - **Commits:** —
-- **Files Modified:** —
-- **Notes:** —
+- **Files Modified:**
+  - `apps/desktop/src/routes/editor/OverlayEditor.tsx` (new, +362 lines) — Modal component for editing overlays
+  - `apps/desktop/src/routes/editor/Timeline/index.tsx` (+16 lines) — Editor state and double-click integration
+- **Notes:**
+  - Created OverlayEditor.tsx with Kobalte Dialog + Select components
+  - Overlay type dropdown (Split/FullScreen) with descriptions
+  - Editable item list with reorder (up/down buttons), add, and delete
+  - Per-item: content text input, delay number input, style dropdown (Title/Bullet/Numbered)
+  - Warning shown when item delay exceeds segment duration
+  - Local state editing with save/cancel — changes only persist on "Save Changes"
+  - Double-click on overlay segment in OverlayTrack opens editor
+  - Uses existing Dialog, Input components from ui.tsx for consistency
 
 ---
 
@@ -286,7 +296,7 @@ Vertical spacing: First item Y = 0.25, subsequent items Y += 0.12
 → Details: `code-review-phase-3.md`
 
 ### Phase 4
-- **Gate:** —
+- **Gate:** ⏳ PENDING REVIEW
 → Details: `code-review-phase-4.md`
 
 ---
