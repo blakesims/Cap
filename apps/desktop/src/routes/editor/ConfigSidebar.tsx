@@ -3948,7 +3948,8 @@ function OverlaySegmentConfig(props: {
 									<span class="text-xs text-gray-10 font-medium w-5">
 										{index() + 1}.
 									</span>
-									<Input
+									<input
+										type="text"
 										value={item.content}
 										onInput={(e) =>
 											projectActions.updateOverlayItem(
@@ -3958,7 +3959,7 @@ function OverlaySegmentConfig(props: {
 											)
 										}
 										placeholder="Item text"
-										class="flex-1"
+										class="flex-1 px-2 py-1 text-sm border border-gray-3 rounded bg-gray-2 text-gray-12 focus:outline-none focus:ring-1 focus:ring-blue-9"
 									/>
 									<button
 										type="button"
