@@ -7,11 +7,11 @@ const ANIMATION_DURATION: f64 = 0.3;
 const SLIDE_OFFSET_X: f64 = 0.15;
 const TITLE_FONT_SIZE: f32 = 64.0;
 const BULLET_FONT_SIZE: f32 = 40.0;
-const FIRST_ITEM_Y: f64 = 0.25;
+const TITLE_Y: f64 = 0.20;
+const FIRST_BULLET_Y: f64 = 0.40;
 const ITEM_Y_SPACING: f64 = 0.12;
 const LEFT_ALIGN_X: f64 = 0.25;
 const CENTER_X: f64 = 0.5;
-const CENTER_Y: f64 = 0.5;
 const TEXT_WIDTH: f64 = 0.35;
 const TEXT_HEIGHT: f64 = 0.15;
 
@@ -46,6 +46,7 @@ pub fn generate_text_segments(overlays: &[OverlaySegment]) -> (Vec<TextSegment>,
 
     for (overlay_index, overlay) in overlays.iter().enumerate() {
         let segment_duration = overlay.end - overlay.start;
+        let mut bullet_index = 0usize;
 
         for (item_index, item) in overlay.items.iter().enumerate() {
             if item.delay >= segment_duration {
@@ -57,7 +58,15 @@ pub fn generate_text_segments(overlays: &[OverlaySegment]) -> (Vec<TextSegment>,
                 });
             }
 
-            let text_segment = create_text_segment(overlay, item, item_index);
+            let current_bullet_index = if matches!(item.style, OverlayItemStyle::Bullet | OverlayItemStyle::Numbered) {
+                let idx = bullet_index;
+                bullet_index += 1;
+                idx
+            } else {
+                0
+            };
+
+            let text_segment = create_text_segment(overlay, item, current_bullet_index);
             text_segments.push(text_segment);
         }
     }
@@ -65,11 +74,11 @@ pub fn generate_text_segments(overlays: &[OverlaySegment]) -> (Vec<TextSegment>,
     (text_segments, warnings)
 }
 
-fn create_text_segment(overlay: &OverlaySegment, item: &OverlayItem, item_index: usize) -> TextSegment {
-    let (center, font_size) = get_position_and_size(&item.style, item_index);
+fn create_text_segment(overlay: &OverlaySegment, item: &OverlayItem, bullet_index: usize) -> TextSegment {
+    let (center, font_size) = get_position_and_size(&item.style, bullet_index);
     let absolute_start = overlay.start + item.delay;
-    let content = format_content(&item.content, &item.style, item_index);
-    let keyframes = create_animation_keyframes(&item.style, absolute_start, overlay.start);
+    let content = format_content(&item.content, &item.style, bullet_index);
+    let keyframes = create_animation_keyframes(&item.style, center.y);
 
     TextSegment {
         start: absolute_start,
@@ -88,11 +97,11 @@ fn create_text_segment(overlay: &OverlaySegment, item: &OverlayItem, item_index:
     }
 }
 
-fn get_position_and_size(style: &OverlayItemStyle, item_index: usize) -> (XY<f64>, f32) {
+fn get_position_and_size(style: &OverlayItemStyle, bullet_index: usize) -> (XY<f64>, f32) {
     match style {
-        OverlayItemStyle::Title => (XY::new(CENTER_X, CENTER_Y), TITLE_FONT_SIZE),
+        OverlayItemStyle::Title => (XY::new(CENTER_X, TITLE_Y), TITLE_FONT_SIZE),
         OverlayItemStyle::Bullet | OverlayItemStyle::Numbered => {
-            let y = FIRST_ITEM_Y + (item_index as f64 * ITEM_Y_SPACING);
+            let y = FIRST_BULLET_Y + (bullet_index as f64 * ITEM_Y_SPACING);
             (XY::new(LEFT_ALIGN_X, y), BULLET_FONT_SIZE)
         }
     }
@@ -108,28 +117,19 @@ fn format_content(content: &str, style: &OverlayItemStyle, item_index: usize) ->
 
 fn create_animation_keyframes(
     _style: &OverlayItemStyle,
-    absolute_start: f64,
-    overlay_start: f64,
+    center_y: f64,
 ) -> TextKeyframes {
-    let relative_time = absolute_start - overlay_start;
-    let animation_end = relative_time + ANIMATION_DURATION;
-
     TextKeyframes {
         position: vec![
             TextVectorKeyframe {
                 time: 0.0,
                 x: -SLIDE_OFFSET_X,
-                y: 0.5,
+                y: center_y,
             },
             TextVectorKeyframe {
-                time: relative_time,
-                x: -SLIDE_OFFSET_X,
-                y: 0.5,
-            },
-            TextVectorKeyframe {
-                time: animation_end,
+                time: ANIMATION_DURATION,
                 x: 0.0,
-                y: 0.5,
+                y: center_y,
             },
         ],
         opacity: vec![
@@ -138,11 +138,7 @@ fn create_animation_keyframes(
                 value: 0.0,
             },
             TextScalarKeyframe {
-                time: relative_time,
-                value: 0.0,
-            },
-            TextScalarKeyframe {
-                time: animation_end,
+                time: ANIMATION_DURATION,
                 value: 1.0,
             },
         ],
@@ -244,7 +240,7 @@ mod tests {
         assert_eq!(text.end, 45.0);
         assert_eq!(text.content, "Overview");
         assert!((text.center.x - CENTER_X).abs() < 1e-6);
-        assert!((text.center.y - CENTER_Y).abs() < 1e-6);
+        assert!((text.center.y - TITLE_Y).abs() < 1e-6);
         assert_eq!(text.font_size, TITLE_FONT_SIZE);
     }
 
@@ -264,11 +260,11 @@ mod tests {
 
         assert_eq!(texts[0].content, "• First point");
         assert!((texts[0].center.x - LEFT_ALIGN_X).abs() < 1e-6);
-        assert!((texts[0].center.y - FIRST_ITEM_Y).abs() < 1e-6);
+        assert!((texts[0].center.y - FIRST_BULLET_Y).abs() < 1e-6);
         assert_eq!(texts[0].font_size, BULLET_FONT_SIZE);
 
         assert_eq!(texts[1].content, "• Second point");
-        assert!((texts[1].center.y - (FIRST_ITEM_Y + ITEM_Y_SPACING)).abs() < 1e-6);
+        assert!((texts[1].center.y - (FIRST_BULLET_Y + ITEM_Y_SPACING)).abs() < 1e-6);
     }
 
     #[test]
@@ -295,20 +291,17 @@ mod tests {
         let (texts, _) = generate_text_segments(&overlays);
         let keyframes = &texts[0].keyframes;
 
-        assert_eq!(keyframes.position.len(), 3);
-        assert_eq!(keyframes.opacity.len(), 3);
+        assert_eq!(keyframes.position.len(), 2);
+        assert_eq!(keyframes.opacity.len(), 2);
 
         assert_eq!(keyframes.opacity[0].time, 0.0);
         assert_eq!(keyframes.opacity[0].value, 0.0);
 
-        assert_eq!(keyframes.opacity[1].time, 2.0);
-        assert_eq!(keyframes.opacity[1].value, 0.0);
+        assert!((keyframes.opacity[1].time - ANIMATION_DURATION).abs() < 1e-6);
+        assert_eq!(keyframes.opacity[1].value, 1.0);
 
-        assert!((keyframes.opacity[2].time - 2.3).abs() < 1e-6);
-        assert_eq!(keyframes.opacity[2].value, 1.0);
-
-        assert!((keyframes.position[1].x - (-SLIDE_OFFSET_X)).abs() < 1e-6);
-        assert_eq!(keyframes.position[2].x, 0.0);
+        assert!((keyframes.position[0].x - (-SLIDE_OFFSET_X)).abs() < 1e-6);
+        assert_eq!(keyframes.position[1].x, 0.0);
     }
 
     #[test]

@@ -94,10 +94,23 @@ export function Header() {
 			}
 			setProject(reconcile(normalizeProject(instance.savedProjectConfig)));
 
-			let message = `Imported ${result.textSegmentsImported} text segment(s)`;
-			if (result.sceneSegmentsCreated > 0) {
-				message += ` and ${result.sceneSegmentsCreated} scene change(s)`;
+			if (result.overlaySegmentsImported > 0) {
+				setEditorState("timeline", "tracks", "overlay", true);
 			}
+
+			const parts: string[] = [];
+			if (result.textSegmentsImported > 0) {
+				parts.push(`${result.textSegmentsImported} text segment(s)`);
+			}
+			if (result.sceneSegmentsCreated > 0) {
+				parts.push(`${result.sceneSegmentsCreated} scene change(s)`);
+			}
+			if (result.overlaySegmentsImported > 0) {
+				parts.push(`${result.overlaySegmentsImported} overlay(s)`);
+			}
+			const message = parts.length > 0
+				? `Imported ${parts.join(", ")}`
+				: "Import complete (no segments)";
 			toast.success(message);
 
 			for (const warning of result.warnings) {

@@ -336,12 +336,12 @@ impl InterpolatedScene {
     pub fn split_camera_x_ratio(&self) -> f64 {
         let start_x = match self.from_mode {
             SceneMode::SplitScreenLeft => 0.0,
-            SceneMode::SplitScreenRight => 0.6,
+            SceneMode::SplitScreenRight => 0.5,
             _ => 0.0,
         };
         let end_x = match self.to_mode {
             SceneMode::SplitScreenLeft => 0.0,
-            SceneMode::SplitScreenRight => 0.6,
+            SceneMode::SplitScreenRight => 0.5,
             _ => 0.0,
         };
         Self::lerp(start_x, end_x, self.transition_progress)
@@ -349,12 +349,12 @@ impl InterpolatedScene {
 
     pub fn split_display_x_ratio(&self) -> f64 {
         let start_x = match self.from_mode {
-            SceneMode::SplitScreenLeft => 0.4,
+            SceneMode::SplitScreenLeft => 0.5,
             SceneMode::SplitScreenRight => 0.0,
             _ => 0.0,
         };
         let end_x = match self.to_mode {
-            SceneMode::SplitScreenLeft => 0.4,
+            SceneMode::SplitScreenLeft => 0.5,
             SceneMode::SplitScreenRight => 0.0,
             _ => 0.0,
         };
@@ -491,7 +491,7 @@ mod tests {
         );
 
         assert!((left.split_camera_x_ratio() - 0.0).abs() < 0.001);
-        assert!((right.split_camera_x_ratio() - 0.6).abs() < 0.001);
+        assert!((right.split_camera_x_ratio() - 0.5).abs() < 0.001);
     }
 
     #[test]
@@ -504,8 +504,8 @@ mod tests {
             make_scene(SceneMode::SplitScreenLeft, SceneMode::SplitScreenRight, 1.0);
 
         assert!((left_to_right_start.split_camera_x_ratio() - 0.0).abs() < 0.001);
-        assert!((left_to_right_mid.split_camera_x_ratio() - 0.3).abs() < 0.001);
-        assert!((left_to_right_end.split_camera_x_ratio() - 0.6).abs() < 0.001);
+        assert!((left_to_right_mid.split_camera_x_ratio() - 0.25).abs() < 0.001);
+        assert!((left_to_right_end.split_camera_x_ratio() - 0.5).abs() < 0.001);
     }
 
     #[test]
@@ -517,7 +517,7 @@ mod tests {
             1.0,
         );
 
-        assert!((left.split_display_x_ratio() - 0.4).abs() < 0.001);
+        assert!((left.split_display_x_ratio() - 0.5).abs() < 0.001);
         assert!((right.split_display_x_ratio() - 0.0).abs() < 0.001);
     }
 
@@ -530,8 +530,8 @@ mod tests {
         let left_to_right_end =
             make_scene(SceneMode::SplitScreenLeft, SceneMode::SplitScreenRight, 1.0);
 
-        assert!((left_to_right_start.split_display_x_ratio() - 0.4).abs() < 0.001);
-        assert!((left_to_right_mid.split_display_x_ratio() - 0.2).abs() < 0.001);
+        assert!((left_to_right_start.split_display_x_ratio() - 0.5).abs() < 0.001);
+        assert!((left_to_right_mid.split_display_x_ratio() - 0.25).abs() < 0.001);
         assert!((left_to_right_end.split_display_x_ratio() - 0.0).abs() < 0.001);
     }
 

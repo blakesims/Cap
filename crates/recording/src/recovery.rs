@@ -952,6 +952,7 @@ impl RecoveryManager {
             scene_segments: Vec::new(),
             mask_segments: Vec::new(),
             text_segments: Vec::new(),
+            overlay_segments: Vec::new(),
         });
 
         config
