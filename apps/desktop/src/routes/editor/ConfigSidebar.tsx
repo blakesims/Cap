@@ -3935,7 +3935,7 @@ function OverlaySegmentConfig(props: {
 						variant="secondary"
 						size="xs"
 					>
-						<IconCapPlus class="size-3 mr-0.5" />
+						<IconLucidePlus class="size-3 mr-0.5" />
 						Add
 					</Button>
 				}
@@ -4057,7 +4057,7 @@ function OverlaySegmentConfig(props: {
 
 								<Show when={item.delay >= segmentDuration()}>
 									<div class="ml-7 text-xs text-amber-9 flex items-center gap-1">
-										<IconCapAlertCircle class="size-3" />
+										<IconLucideAlertCircle class="size-3" />
 										Delay exceeds segment duration (
 										{segmentDuration().toFixed(1)}
 										s)

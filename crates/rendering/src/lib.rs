@@ -1771,7 +1771,7 @@ impl ProjectUniforms {
                 let output_size = [output_size.0 as f32, output_size.1 as f32];
                 let frame_size = [camera_size.x as f32, camera_size.y as f32];
 
-                let camera_width = output_size[0] * 0.4;
+                let camera_width = output_size[0] * 0.5;
                 let camera_height = output_size[1];
                 let camera_x = scene.split_camera_x_ratio() as f32 * output_size[0];
 
