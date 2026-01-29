@@ -3929,15 +3929,14 @@ function OverlaySegmentConfig(props: {
 				name="Items"
 				icon={<IconLucideList class="size-4" />}
 				value={
-					<Button
+					<button
+						type="button"
 						onClick={handleAddItem}
-						class="!px-2 !py-1 !text-xs"
-						variant="secondary"
-						size="xs"
+						class="px-2 py-1 text-xs bg-gray-3 hover:bg-gray-4 text-gray-11 rounded transition-colors flex items-center gap-1"
 					>
-						<IconLucidePlus class="size-3 mr-0.5" />
+						<IconLucidePlus class="size-3" />
 						Add
-					</Button>
+					</button>
 				}
 			>
 				<div class="flex flex-col gap-3">
