@@ -68,23 +68,23 @@ Enable coupled overlay segments that combine layout changes with text, simplifyi
 - **Files:** `crates/rendering/src/scene.rs`, `crates/rendering/src/lib.rs`
 - **Dependencies:** Phase 1 complete
 
-#### Phase 3: OverlayTrack.tsx UI Component
+#### Phase 3: OverlayTrack.tsx UI Component ✅
 - **Objective:** New timeline track for managing overlays visually
 - **Tasks:**
-  - [ ] Task 3.1: Create `OverlayTrack.tsx` component following TextTrack patterns
-  - [ ] Task 3.2: Render segments as colored bars (different color per overlay type)
-  - [ ] Task 3.3: Implement drag to move entire overlay
-  - [ ] Task 3.4: Implement resize handles to change start/end time
-  - [ ] Task 3.5: Implement click to select, integrate with existing selection state
-  - [ ] Task 3.6: Double-click to open item editor (Phase 4)
-  - [ ] Task 3.7: Add overlay track to Timeline/index.tsx when overlays exist
-  - [ ] Task 3.8: Add `overlay` to `TimelineSelectionType` in context.ts
+  - [x] Task 3.1: Create `OverlayTrack.tsx` component following TextTrack patterns
+  - [x] Task 3.2: Render segments as colored bars (different color per overlay type)
+  - [x] Task 3.3: Implement drag to move entire overlay
+  - [x] Task 3.4: Implement resize handles to change start/end time
+  - [x] Task 3.5: Implement click to select, integrate with existing selection state
+  - [x] Task 3.6: Double-click to open item editor (Phase 4)
+  - [x] Task 3.7: Add overlay track to Timeline/index.tsx when overlays exist
+  - [x] Task 3.8: Add `overlay` to `TimelineSelectionType` in context.ts
 - **Acceptance Criteria:**
-  - [ ] AC1: Track appears in timeline when overlays exist
-  - [ ] AC2: Segments are draggable (moves entire overlay)
-  - [ ] AC3: Segments are resizable (changes start/end)
-  - [ ] AC4: Selection works and integrates with existing UI
-  - [ ] AC5: Visual distinction between Split and FullScreen types
+  - [x] AC1: Track appears in timeline when overlays exist
+  - [x] AC2: Segments are draggable (moves entire overlay)
+  - [x] AC3: Segments are resizable (changes start/end)
+  - [x] AC4: Selection works and integrates with existing UI
+  - [x] AC5: Visual distinction between Split and FullScreen types
 - **Files:** `apps/desktop/src/routes/editor/Timeline/OverlayTrack.tsx` (new), `apps/desktop/src/routes/editor/Timeline/index.tsx`, `apps/desktop/src/routes/editor/context.ts`
 - **Dependencies:** Phase 1 complete
 
@@ -233,12 +233,25 @@ Vertical spacing: First item Y = 0.25, subsequent items Y += 0.12
   - No jarring cuts: all transitions use 0.3s bezier easing, `MIN_GAP_FOR_TRANSITION` (0.5s) prevents unnecessary transitions
 
 ### Phase 3: OverlayTrack.tsx UI Component
-- **Status:** —
-- **Started:** —
-- **Completed:** —
+- **Status:** ✅ COMPLETE
+- **Started:** 2026-01-29
+- **Completed:** 2026-01-29
 - **Commits:** —
-- **Files Modified:** —
-- **Notes:** —
+- **Files Modified:**
+  - `apps/desktop/src/routes/editor/Timeline/OverlayTrack.tsx` (new, ~400 lines) — Main component
+  - `apps/desktop/src/routes/editor/Timeline/index.tsx` (+30 lines) — Track integration
+  - `apps/desktop/src/routes/editor/context.ts` (+60 lines) — Selection type, track state, projectActions
+- **Notes:**
+  - Created OverlayTrack.tsx following TextTrack patterns
+  - Colored segments: Split=orange gradient, FullScreen=teal gradient
+  - Drag-to-move and resize handles implemented
+  - Multi-select with Ctrl/Cmd+click, range select with Shift+click
+  - Double-click handler for future item editor (Phase 4)
+  - Added `overlay` to TimelineSelectionType and TimelineTrackType
+  - Added overlay track toggle in TrackManager
+  - Added projectActions: splitOverlaySegment, deleteOverlaySegments
+  - Updated rippleAdjustOverlays and deleteInOutRegion for overlay support
+  - TypeScript types defined locally (not in tauri.ts auto-generated)
 
 ### Phase 4: Item Timing Editor UI
 - **Status:** —
