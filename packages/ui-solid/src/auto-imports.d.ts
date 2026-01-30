@@ -6,6 +6,7 @@
 // biome-ignore lint: disable
 export {}
 declare global {
+  const IconCapAlertCircle: typeof import('~icons/cap/alert-circle.jsx')['default']
   const IconCapArrows: typeof import('~icons/cap/arrows.jsx')['default']
   const IconCapAudioOn: typeof import('~icons/cap/audio-on.jsx')['default']
   const IconCapBgBlur: typeof import('~icons/cap/bg-blur.jsx')['default']
@@ -45,6 +46,7 @@ declare global {
   const IconCapPauseCircle: typeof import('~icons/cap/pause-circle.jsx')['default']
   const IconCapPlay: typeof import('~icons/cap/play.jsx')['default']
   const IconCapPlayCircle: typeof import('~icons/cap/play-circle.jsx')['default']
+  const IconCapPlus: typeof import('~icons/cap/plus.jsx')['default']
   const IconCapPresets: typeof import('~icons/cap/presets.jsx')['default']
   const IconCapPrev: typeof import('~icons/cap/prev.jsx')['default']
   const IconCapRedo: typeof import('~icons/cap/redo.jsx')['default']
@@ -68,8 +70,11 @@ declare global {
   const IconLucideBell: typeof import('~icons/lucide/bell.jsx')['default']
   const IconLucideBoxSelect: typeof import('~icons/lucide/box-select.jsx')['default']
   const IconLucideCheck: typeof import('~icons/lucide/check.jsx')['default']
+  const IconLucideChevronDown: typeof import('~icons/lucide/chevron-down.jsx')['default']
+  const IconLucideChevronUp: typeof import('~icons/lucide/chevron-up.jsx')['default']
   const IconLucideClapperboard: typeof import('~icons/lucide/clapperboard.jsx')['default']
   const IconLucideClock: typeof import('~icons/lucide/clock.jsx')['default']
+  const IconLucideColumns: typeof import('~icons/lucide/columns.jsx')['default']
   const IconLucideEdit: typeof import('~icons/lucide/edit.jsx')['default']
   const IconLucideEyeOff: typeof import('~icons/lucide/eye-off.jsx')['default']
   const IconLucideFastForward: typeof import('~icons/lucide/fast-forward.jsx')['default']
@@ -80,6 +85,7 @@ declare global {
   const IconLucideImage: typeof import('~icons/lucide/image.jsx')['default']
   const IconLucideInfo: typeof import('~icons/lucide/info.jsx')['default']
   const IconLucideLayout: typeof import('~icons/lucide/layout.jsx')['default']
+  const IconLucideList: typeof import('~icons/lucide/list.jsx')['default']
   const IconLucideLoader2: typeof import('~icons/lucide/loader2.jsx')['default']
   const IconLucideLoaderCircle: typeof import('~icons/lucide/loader-circle.jsx')['default']
   const IconLucideMaximize: typeof import('~icons/lucide/maximize.jsx')['default']
@@ -96,6 +102,7 @@ declare global {
   const IconLucideSearch: typeof import('~icons/lucide/search.jsx')['default']
   const IconLucideSparkles: typeof import('~icons/lucide/sparkles.jsx')['default']
   const IconLucideSquarePlay: typeof import('~icons/lucide/square-play.jsx')['default']
+  const IconLucideTrash2: typeof import('~icons/lucide/trash2.jsx')['default']
   const IconLucideType: typeof import('~icons/lucide/type.jsx')['default']
   const IconLucideUnplug: typeof import('~icons/lucide/unplug.jsx')['default']
   const IconLucideVideo: typeof import('~icons/lucide/video.jsx')['default']
