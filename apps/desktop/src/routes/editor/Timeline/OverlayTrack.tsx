@@ -4,7 +4,11 @@ import { createMemo, createRoot, For, Show } from "solid-js";
 import { produce } from "solid-js/store";
 
 import { useEditorContext } from "../context";
-import { useSegmentContext, useTimelineContext, useTrackContext } from "./context";
+import {
+	useSegmentContext,
+	useTimelineContext,
+	useTrackContext,
+} from "./context";
 import { SegmentContent, SegmentHandle, SegmentRoot, TrackRoot } from "./Track";
 
 export type OverlayType = "split" | "fullScreen";
@@ -265,7 +269,9 @@ export function OverlayTrack(props: {
 
 	return (
 		<TrackRoot
-			onMouseEnter={() => setEditorState("timeline", "hoveredTrack", "overlay" as never)}
+			onMouseEnter={() =>
+				setEditorState("timeline", "hoveredTrack", "overlay" as never)
+			}
 			onMouseLeave={() => setEditorState("timeline", "hoveredTrack", null)}
 			onMouseDown={handleBackgroundMouseDown}
 		>
@@ -284,7 +290,9 @@ export function OverlayTrack(props: {
 					const isSelected = createMemo(() => {
 						const selection = editorState.timeline.selection;
 						if (!selection || selection.type !== "overlay") return false;
-						return (selection as { type: "overlay"; indices: number[] }).indices.includes(i());
+						return (
+							selection as { type: "overlay"; indices: number[] }
+						).indices.includes(i());
 					});
 
 					const segmentWidth = () => segment.end - segment.start;

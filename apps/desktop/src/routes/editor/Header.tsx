@@ -108,9 +108,10 @@ export function Header() {
 			if (result.overlaySegmentsImported > 0) {
 				parts.push(`${result.overlaySegmentsImported} overlay(s)`);
 			}
-			const message = parts.length > 0
-				? `Imported ${parts.join(", ")}`
-				: "Import complete (no segments)";
+			const message =
+				parts.length > 0
+					? `Imported ${parts.join(", ")}`
+					: "Import complete (no segments)";
 			toast.success(message);
 
 			for (const warning of result.warnings) {

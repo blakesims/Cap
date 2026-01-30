@@ -47,7 +47,10 @@ pub use frame_pipeline::RenderedFrame;
 pub use project_recordings::{ProjectRecordingsMeta, SegmentRecordings, Video};
 
 use mask::interpolate_masks;
-pub use overlay::{generate_scene_segments, generate_text_segments, merge_with_existing, validate_overlay_items, OverlayWarning};
+pub use overlay::{
+    OverlayWarning, generate_scene_segments, generate_text_segments, merge_with_existing,
+    validate_overlay_items,
+};
 use scene::*;
 use text::{PreparedText, prepare_texts};
 use zoom::*;
@@ -1626,14 +1629,29 @@ impl ProjectUniforms {
                 let cropped_height = frame_size[1] - fixed_crop_top - fixed_crop_bottom;
 
                 let crop_bounds = match project.camera.shape {
-                    CameraShape::Source => [0.0, fixed_crop_top, frame_size[0], frame_size[1] - fixed_crop_bottom],
+                    CameraShape::Source => [
+                        0.0,
+                        fixed_crop_top,
+                        frame_size[0],
+                        frame_size[1] - fixed_crop_bottom,
+                    ],
                     CameraShape::Square => {
                         if frame_size[0] > cropped_height {
                             let offset = (frame_size[0] - cropped_height) / 2.0;
-                            [offset, fixed_crop_top, frame_size[0] - offset, frame_size[1] - fixed_crop_bottom]
+                            [
+                                offset,
+                                fixed_crop_top,
+                                frame_size[0] - offset,
+                                frame_size[1] - fixed_crop_bottom,
+                            ]
                         } else {
                             let extra_crop = (cropped_height - frame_size[0]) / 2.0;
-                            [0.0, fixed_crop_top + extra_crop, frame_size[0], frame_size[1] - fixed_crop_bottom - extra_crop]
+                            [
+                                0.0,
+                                fixed_crop_top + extra_crop,
+                                frame_size[0],
+                                frame_size[1] - fixed_crop_bottom - extra_crop,
+                            ]
                         }
                     }
                 };
@@ -1713,11 +1731,21 @@ impl ProjectUniforms {
                 let crop_bounds = if cropped_aspect > output_aspect {
                     let visible_width = cropped_height * output_aspect;
                     let crop_x = (frame_size[0] - visible_width) / 2.0;
-                    [crop_x, fixed_crop_top, frame_size[0] - crop_x, frame_size[1] - fixed_crop_bottom]
+                    [
+                        crop_x,
+                        fixed_crop_top,
+                        frame_size[0] - crop_x,
+                        frame_size[1] - fixed_crop_bottom,
+                    ]
                 } else {
                     let visible_height = frame_size[0] / output_aspect;
                     let extra_crop_y = (cropped_height - visible_height) / 2.0;
-                    [0.0, fixed_crop_top + extra_crop_y, frame_size[0], frame_size[1] - fixed_crop_bottom - extra_crop_y]
+                    [
+                        0.0,
+                        fixed_crop_top + extra_crop_y,
+                        frame_size[0],
+                        frame_size[1] - fixed_crop_bottom - extra_crop_y,
+                    ]
                 };
 
                 let camera_only_blur =

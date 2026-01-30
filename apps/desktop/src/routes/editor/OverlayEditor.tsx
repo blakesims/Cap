@@ -11,7 +11,12 @@ import type {
 	OverlaySegment,
 	OverlayType,
 } from "./Timeline/OverlayTrack";
-import { Dialog, dropdownContainerClasses, Input, topSlideAnimateClasses } from "./ui";
+import {
+	Dialog,
+	dropdownContainerClasses,
+	Input,
+	topSlideAnimateClasses,
+} from "./ui";
 
 const OVERLAY_TYPE_OPTIONS: { value: OverlayType; label: string }[] = [
 	{ value: "split", label: "Split (50/50)" },
@@ -34,9 +39,8 @@ export function OverlayEditor(props: OverlayEditorProps) {
 	const { project, setProject, projectHistory } = useEditorContext();
 
 	const segment = createMemo((): OverlaySegment | undefined => {
-		const overlays = (project.timeline?.overlaySegments as
-			| OverlaySegment[]
-			| undefined) ?? [];
+		const overlays =
+			(project.timeline?.overlaySegments as OverlaySegment[] | undefined) ?? [];
 		return overlays[props.segmentIndex];
 	});
 
@@ -135,7 +139,11 @@ export function OverlayEditor(props: OverlayEditorProps) {
 	});
 
 	return (
-		<Dialog.Root open={props.open} onOpenChange={(open) => !open && props.onClose()} size="lg">
+		<Dialog.Root
+			open={props.open}
+			onOpenChange={(open) => !open && props.onClose()}
+			size="lg"
+		>
 			<Dialog.Header>
 				<span class="text-gray-12 font-medium">Edit Overlay</span>
 			</Dialog.Header>
@@ -156,7 +164,11 @@ export function OverlayEditor(props: OverlayEditorProps) {
 									class="flex items-center px-3 py-2 text-sm cursor-pointer rounded-lg outline-none ui-highlighted:bg-gray-3 text-gray-12"
 								>
 									<KSelect.ItemLabel>
-										{OVERLAY_TYPE_OPTIONS.find((o) => o.value === itemProps.item.rawValue)?.label}
+										{
+											OVERLAY_TYPE_OPTIONS.find(
+												(o) => o.value === itemProps.item.rawValue,
+											)?.label
+										}
 									</KSelect.ItemLabel>
 								</KSelect.Item>
 							)}
@@ -164,7 +176,9 @@ export function OverlayEditor(props: OverlayEditorProps) {
 							<KSelect.Trigger class="flex items-center justify-between w-full px-3 py-2 text-sm border border-gray-3 rounded-lg bg-gray-2 hover:bg-gray-3 transition-colors text-gray-12">
 								<KSelect.Value<OverlayType>>
 									{(state) =>
-										OVERLAY_TYPE_OPTIONS.find((o) => o.value === state.selectedOption())?.label
+										OVERLAY_TYPE_OPTIONS.find(
+											(o) => o.value === state.selectedOption(),
+										)?.label
 									}
 								</KSelect.Value>
 								<KSelect.Icon class="text-gray-10">
@@ -172,7 +186,13 @@ export function OverlayEditor(props: OverlayEditorProps) {
 								</KSelect.Icon>
 							</KSelect.Trigger>
 							<KSelect.Portal>
-								<KSelect.Content class={cx(dropdownContainerClasses, topSlideAnimateClasses, "w-[200px]")}>
+								<KSelect.Content
+									class={cx(
+										dropdownContainerClasses,
+										topSlideAnimateClasses,
+										"w-[200px]",
+									)}
+								>
 									<KSelect.Listbox class="p-1" />
 								</KSelect.Content>
 							</KSelect.Portal>
@@ -235,7 +255,11 @@ export function OverlayEditor(props: OverlayEditorProps) {
 													<Input
 														value={item.content}
 														onInput={(e) =>
-															handleItemChange(index(), "content", e.currentTarget.value)
+															handleItemChange(
+																index(),
+																"content",
+																e.currentTarget.value,
+															)
 														}
 														placeholder="Item text"
 														class="w-full"
@@ -265,7 +289,9 @@ export function OverlayEditor(props: OverlayEditorProps) {
 														max={segmentDuration()}
 														value={item.delay.toFixed(1)}
 														onInput={(e) => {
-															const value = Number.parseFloat(e.currentTarget.value);
+															const value = Number.parseFloat(
+																e.currentTarget.value,
+															);
 															if (!Number.isNaN(value) && value >= 0) {
 																handleItemChange(index(), "delay", value);
 															}
@@ -279,7 +305,8 @@ export function OverlayEditor(props: OverlayEditorProps) {
 													<KSelect
 														value={item.style}
 														onChange={(value) => {
-															if (value) handleItemChange(index(), "style", value);
+															if (value)
+																handleItemChange(index(), "style", value);
 														}}
 														options={ITEM_STYLE_OPTIONS.map((o) => o.value)}
 														itemComponent={(itemProps) => (
@@ -288,9 +315,12 @@ export function OverlayEditor(props: OverlayEditorProps) {
 																class="flex items-center px-2 py-1.5 text-xs cursor-pointer rounded outline-none ui-highlighted:bg-gray-3 text-gray-12"
 															>
 																<KSelect.ItemLabel>
-																	{ITEM_STYLE_OPTIONS.find(
-																		(o) => o.value === itemProps.item.rawValue,
-																	)?.label}
+																	{
+																		ITEM_STYLE_OPTIONS.find(
+																			(o) =>
+																				o.value === itemProps.item.rawValue,
+																		)?.label
+																	}
 																</KSelect.ItemLabel>
 															</KSelect.Item>
 														)}
@@ -325,7 +355,8 @@ export function OverlayEditor(props: OverlayEditorProps) {
 											<Show when={item.delay >= segmentDuration()}>
 												<div class="ml-7 text-xs text-amber-9 flex items-center gap-1">
 													<IconLucideAlertTriangle class="size-3" />
-													Delay exceeds segment duration ({segmentDuration().toFixed(1)}s)
+													Delay exceeds segment duration (
+													{segmentDuration().toFixed(1)}s)
 												</div>
 											</Show>
 										</div>
