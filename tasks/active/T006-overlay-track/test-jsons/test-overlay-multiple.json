@@ -1,0 +1,24 @@
+{
+	"version": "2.0.0",
+	"overlays": [
+		{
+			"type": "split",
+			"start": 2.0,
+			"end": 8.0,
+			"items": [
+				{ "delay": 0.5, "text": "Part One", "style": "title" },
+				{ "delay": 2.0, "text": "Important concept", "style": "bullet" }
+			]
+		},
+		{
+			"type": "fullScreen",
+			"start": 10.0,
+			"end": 18.0,
+			"items": [
+				{ "delay": 0.0, "text": "Summary", "style": "title" },
+				{ "delay": 1.5, "text": "We covered X", "style": "bullet" },
+				{ "delay": 3.0, "text": "We learned Y", "style": "bullet" }
+			]
+		}
+	]
+}

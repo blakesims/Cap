@@ -1,0 +1,16 @@
+{
+	"version": "2.0.0",
+	"overlays": [
+		{
+			"type": "fullScreen",
+			"start": 3.0,
+			"end": 15.0,
+			"items": [
+				{ "delay": 0.0, "text": "Three Steps", "style": "title" },
+				{ "delay": 1.5, "text": "Step one - Setup", "style": "numbered" },
+				{ "delay": 3.0, "text": "Step two - Configure", "style": "numbered" },
+				{ "delay": 4.5, "text": "Step three - Deploy", "style": "numbered" }
+			]
+		}
+	]
+}

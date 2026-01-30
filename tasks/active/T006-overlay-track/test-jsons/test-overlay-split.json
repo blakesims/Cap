@@ -1,0 +1,16 @@
+{
+	"version": "2.0.0",
+	"overlays": [
+		{
+			"type": "split",
+			"start": 2.0,
+			"end": 12.0,
+			"items": [
+				{ "delay": 0.5, "text": "Introduction", "style": "title" },
+				{ "delay": 2.0, "text": "First key point", "style": "bullet" },
+				{ "delay": 3.5, "text": "Second key point", "style": "bullet" },
+				{ "delay": 5.0, "text": "Third key point", "style": "bullet" }
+			]
+		}
+	]
+}

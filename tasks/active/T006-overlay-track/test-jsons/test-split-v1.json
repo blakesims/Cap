@@ -1,0 +1,22 @@
+{
+	"version": "1.0.0",
+	"sceneChanges": [
+		{ "time": 2.0, "mode": "splitScreenRight" },
+		{ "time": 8.0, "mode": "screen" }
+	],
+	"textSegments": [
+		{
+			"start": 2.5,
+			"end": 7.5,
+			"content": "Key Point",
+			"center": { "x": 0.3, "y": 0.5 },
+			"fontSize": 60,
+			"keyframes": {
+				"opacity": [
+					{ "time": 0.0, "value": 0.0 },
+					{ "time": 0.3, "value": 1.0 }
+				]
+			}
+		}
+	]
+}

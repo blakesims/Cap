@@ -1,0 +1,12 @@
+{
+	"version": "1.0.0",
+	"textSegments": [
+		{
+			"start": 1.0,
+			"end": 5.0,
+			"content": "Hello World",
+			"center": { "x": 0.5, "y": 0.5 },
+			"fontSize": 60
+		}
+	]
+}
